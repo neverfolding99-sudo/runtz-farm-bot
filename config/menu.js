@@ -1,19 +1,28 @@
-// RUNTZ FARM - MENU SKABELON
-// Rediger denne fil for at tilføje, fjerne eller ændre produkter.
-// Hver kategori er en liste over varer: { name, price, unit }
-// price er i kroner (kun tal, ingen kr-tegn)
-// Priserne herunder er pladsholdere, opdater dem med dine rigtige priser.
+// RUNTZ FARM - MENU TEMPLATE
+// Edit this file to add, remove, or change products.
+// Each category is a list of items: { name, price, unit }
+// price is in dollars (numbers only, no dollar sign)
+// Prices below are placeholders, update them to your real prices.
 
 module.exports = {
-  "Blomst 🌸": [
+  "Flower 🌸": [
     { name: "La Runtz Cali 🌿", price: 45, unit: "1/8 oz" },
     { name: "Exotic Static 🌿", price: 45, unit: "1/8 oz" },
     { name: "Piatella 🌿", price: 45, unit: "1/8 oz" },
     { name: "Plasma Static 🌿", price: 50, unit: "1/8 oz" },
     { name: "White Gelato Cali 🌿", price: 45, unit: "1/8 oz" },
     ],
-  "Spisestykker 🍬": [
-    { name: "Gummibjørne 10-pak 🍭", price: 20, unit: "pak" },
-    { name: "Chokoladebar 🍫", price: 15, unit: "bar" },
+  "Edibles 🍬": [
+    { name: "Gummies 10-pack 🍭", price: 20, unit: "pack" },
+    { name: "Chocolate Bar 🍫", price: 15, unit: "bar" },
     ],
-  
+  "Tinctures 💧": [
+    { name: "CBD Oil 1000mg 💧", price: 45, unit: "bottle" },
+    ],
+  "Vapes 💨": [
+    { name: "Disposable Vape 💨", price: 30, unit: "unit" },
+    ],
+  "Topicals 🧴": [
+    { name: "CBD Balm 🧴", price: 25, unit: "jar" },
+    ],
+};
