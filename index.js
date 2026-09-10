@@ -134,6 +134,21 @@ function suggestedUsername(ctx) {
   return ctx.from && ctx.from.username ? ctx.from.username : null;
 }
 
+function askTiming(ctx) {
+  ctx.session.stage = 'awaiting_timing';
+  return ctx.reply('Hvornar vil du gerne have din ordre? ✨', Markup.inlineKeyboard([
+    [Markup.button.callback('I dag', 'timing:today')],
+    [Markup.button.callback('I morgen', 'timing:tomorrow')],
+    ]));
+}
+
+bot.action(/^timing:(today|tomorrow)$/, (ctx) => {
+  ctx.session.order.day = ctx.match[1];
+  ctx.session.stage = 'awaiting_time';
+  const dayDa = ctx.match[1] === 'today' ? 'i dag' : 'i morgen';
+  return ctx.editMessageText('Perfekt, ' + dayDa + '. Hvilket klokkeslaet passer dig? (f.eks. 16:00)');
+});
+
 function askPayment(ctx) {
   if (!REVOLUT_LINK) {
     ctx.session.order.payment = 'cash';
@@ -181,12 +196,17 @@ bot.on('text', async (ctx) => {
            ctx.session.stage = 'awaiting_address';
            return ctx.reply('Hvilken adresse skal vi levere til?');
          } else {
-           return askPayment(ctx);
+           return askTiming(ctx);
          }
        }
 
        if (stage === 'awaiting_address') {
          ctx.session.order.address = ctx.message.text;
+         return askTiming(ctx);
+       }
+
+       if (stage === 'awaiting_time') {
+         ctx.session.order.time = ctx.message.text;
          return askPayment(ctx);
        }
 });
@@ -201,6 +221,10 @@ function fulfillmentLabel(o) {
   return o.fulfillment === 'delivery' ? 'Levering' : 'Afhentning';
 }
 
+function dayLabel(o) {
+  return o.day === 'today' ? 'I dag' : 'I morgen';
+}
+
 function sendConfirmation(ctx) {
   const o = ctx.session.order;
   const summary = [
@@ -213,6 +237,7 @@ function sendConfirmation(ctx) {
     'Telegram: @' + o.telegramUsername,
     'Metode: ' + fulfillmentLabel(o),
     o.address ? ('Adresse: ' + o.address) : null,
+    '📅 Onsket tidspunkt: ' + dayLabel(o) + ' kl. ' + o.time,
     '',
     'Betaling: ' + paymentLabel(o),
     ].filter(Boolean).join('\n');
@@ -243,6 +268,7 @@ bot.action('confirm_order', async (ctx) => {
              'Telegram: @' + o.telegramUsername,
              'Metode: ' + fulfillmentLabel(o),
              o.address ? ('Adresse: ' + o.address) : null,
+             '📅 Onsket tidspunkt: ' + dayLabel(o) + ' kl. ' + o.time,
              'Betaling: ' + paymentLabel(o),
              '',
              'Telegram konto id: ' + customer.id,
@@ -255,7 +281,7 @@ bot.action('confirm_order', async (ctx) => {
            }
 
            const fulfillmentDa = o.fulfillment === 'delivery' ? 'levering' : 'afhentning';
-  let confirmText = 'Ordre modtaget! Vi kontakter dig for at bekraefte detaljer om ' + fulfillmentDa + '. Tak fordi du valgte Runtz Farm!';
+  let confirmText = 'Ordre modtaget! Vi kontakter dig for at bekraefte detaljer om ' + fulfillmentDa + ' ' + dayLabel(o).toLowerCase() + ' kl. ' + o.time + '. Tak fordi du valgte Runtz Farm!';
   if (o.payment === 'revolut' && REVOLUT_LINK) {
     confirmText += '\n\nBetal her: ' + REVOLUT_LINK;
   }
