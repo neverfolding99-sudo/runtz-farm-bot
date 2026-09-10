@@ -27,7 +27,7 @@ bot.use((ctx, next) => {
 });
 
 function formatCart(cart) {
-  if (cart.length === 0) return 'Your cart is empty.';
+  if (cart.length === 0) return 'Din kurv er tom.';
   let total = 0;
   const lines = cart.map((item, i) => {
     total += item.price;
@@ -38,11 +38,17 @@ function formatCart(cart) {
   return lines.join('\n');
 }
 
+function categoryText(category) {
+  const items = menu[category];
+  const lines = items.map((item, i) => (i + 1) + '. ' + item.name + ' - $' + item.price + '/' + item.unit + '\n' + item.description);
+  return category + ':\n\n' + lines.join('\n\n');
+}
+
 function categoryKeyboard() {
   const buttons = Object.keys(menu).map((cat) => [
     Markup.button.callback(cat, 'cat:' + cat),
     ]);
-  buttons.push([Markup.button.callback('View Cart', 'view_cart')]);
+  buttons.push([Markup.button.callback('Se kurv', 'view_cart')]);
   return Markup.inlineKeyboard(buttons);
 }
 
@@ -51,21 +57,21 @@ function itemsKeyboard(category) {
   const buttons = items.map((item, i) => [
     Markup.button.callback(item.name + ' - $' + item.price + '/' + item.unit, 'add:' + category + ':' + i),
     ]);
-  buttons.push([Markup.button.callback('Back to categories', 'back_to_categories')]);
+  buttons.push([Markup.button.callback('Tilbage til kategorier', 'back_to_categories')]);
   return Markup.inlineKeyboard(buttons);
 }
 
 function cartKeyboard() {
   return Markup.inlineKeyboard([
-    [Markup.button.callback('Add more items', 'back_to_categories')],
-    [Markup.button.callback('Checkout', 'checkout')],
-    [Markup.button.callback('Clear cart', 'clear_cart')],
+    [Markup.button.callback('Tilfoj flere varer', 'back_to_categories')],
+    [Markup.button.callback('Til kassen', 'checkout')],
+    [Markup.button.callback('Ryd kurv', 'clear_cart')],
     ]);
 }
 
 bot.start((ctx) => {
   ctx.session = { cart: [], stage: null, order: {} };
-  ctx.reply('Welcome to Runtz Farm! Browse the menu below and tap items to add them to your cart. When you are ready, hit Checkout.', categoryKeyboard());
+  ctx.reply('Velkommen til Runtz Farm! Se menuen nedenfor og tryk pa varer for at tilfoje dem til din kurv. Nar du er klar, tryk Til kassen.', categoryKeyboard());
 });
 
 bot.command('menu', (ctx) => {
@@ -78,12 +84,12 @@ bot.command('cart', (ctx) => {
 
 bot.command('cancel', (ctx) => {
   ctx.session = { cart: [], stage: null, order: {} };
-  ctx.reply('Order cancelled. Send /start to begin again.');
+  ctx.reply('Ordre annulleret. Send /start for at begynde igen.');
 });
 
 bot.action(/^cat:(.+)$/, (ctx) => {
   const category = ctx.match[1];
-  ctx.editMessageText(category + ':', itemsKeyboard(category));
+  ctx.editMessageText(categoryText(category), itemsKeyboard(category));
 });
 
 bot.action('back_to_categories', (ctx) => {
@@ -95,7 +101,7 @@ bot.action(/^add:(.+):(\d+)$/, (ctx) => {
   const idx = parseInt(ctx.match[2], 10);
   const item = menu[category][idx];
   ctx.session.cart.push(item);
-  ctx.answerCbQuery('Added ' + item.name + ' to cart');
+  ctx.answerCbQuery(item.name + ' tilfojet til kurv');
 });
 
 bot.action('view_cart', (ctx) => {
@@ -104,24 +110,24 @@ bot.action('view_cart', (ctx) => {
 
 bot.action('clear_cart', (ctx) => {
   ctx.session.cart = [];
-  ctx.editMessageText('Cart cleared.', categoryKeyboard());
+  ctx.editMessageText('Kurv ryddet.', categoryKeyboard());
 });
 
 bot.action('checkout', (ctx) => {
   if (ctx.session.cart.length === 0) {
-    return ctx.answerCbQuery('Your cart is empty, add something first!');
+    return ctx.answerCbQuery('Din kurv er tom, tilfoj noget forst!');
   }
   ctx.session.stage = 'awaiting_fulfillment';
-  ctx.editMessageText('How would you like your order?', Markup.inlineKeyboard([
-    [Markup.button.callback('Delivery', 'fulfillment:delivery')],
-    [Markup.button.callback('Pickup', 'fulfillment:pickup')],
+  ctx.editMessageText('Hvordan vil du gerne have din ordre?', Markup.inlineKeyboard([
+    [Markup.button.callback('Levering', 'fulfillment:delivery')],
+    [Markup.button.callback('Afhentning', 'fulfillment:pickup')],
     ]));
 });
 
 bot.action(/^fulfillment:(delivery|pickup)$/, (ctx) => {
   ctx.session.order.fulfillment = ctx.match[1];
   ctx.session.stage = 'awaiting_name';
-  ctx.editMessageText('What name should we put on the order?');
+  ctx.editMessageText('Hvilket navn skal vi saette pa ordren?');
 });
 
 function suggestedUsername(ctx) {
@@ -135,8 +141,9 @@ function askPayment(ctx) {
     return sendConfirmation(ctx);
   }
   ctx.session.stage = 'awaiting_payment';
-  return ctx.reply('How would you like to pay?', Markup.inlineKeyboard([
-    [Markup.button.callback('Cash on ' + ctx.session.order.fulfillment, 'payment:cash')],
+  const fulfillmentDa = ctx.session.order.fulfillment === 'delivery' ? 'levering' : 'afhentning';
+  return ctx.reply('Hvordan vil du gerne betale?', Markup.inlineKeyboard([
+    [Markup.button.callback('Kontant ved ' + fulfillmentDa, 'payment:cash')],
     [Markup.button.callback('Revolut Pay', 'payment:revolut')],
     ]));
 }
@@ -153,15 +160,15 @@ bot.on('text', async (ctx) => {
        if (stage === 'awaiting_name') {
          ctx.session.order.name = ctx.message.text;
          ctx.session.stage = 'awaiting_phone';
-         return ctx.reply('What phone number can we reach you at?');
+         return ctx.reply('Hvilket telefonnummer kan vi kontakte dig pa?');
        }
 
        if (stage === 'awaiting_phone') {
          ctx.session.order.phone = ctx.message.text;
          ctx.session.stage = 'awaiting_telegram';
          const suggestion = suggestedUsername(ctx);
-         const hint = suggestion ? (' We have you as @' + suggestion + ', reply that or type a different one.') : ' Please type it without the @ sign.';
-         return ctx.reply('What is your Telegram username so we can message you there?' + hint);
+         const hint = suggestion ? (' Vi har dig som @' + suggestion + ', svar det eller skriv et andet.') : ' Skriv det uden @ tegnet.';
+         return ctx.reply('Hvad er dit Telegram brugernavn, sa vi kan skrive til dig der?' + hint);
        }
 
        if (stage === 'awaiting_telegram') {
@@ -172,7 +179,7 @@ bot.on('text', async (ctx) => {
          ctx.session.order.telegramUsername = handle;
          if (ctx.session.order.fulfillment === 'delivery') {
            ctx.session.stage = 'awaiting_address';
-           return ctx.reply('What address should we deliver to?');
+           return ctx.reply('Hvilken adresse skal vi levere til?');
          } else {
            return askPayment(ctx);
          }
@@ -186,34 +193,39 @@ bot.on('text', async (ctx) => {
 
 function paymentLabel(o) {
   if (o.payment === 'revolut') return 'Revolut Pay';
-  return 'Cash on ' + o.fulfillment;
+  const fulfillmentDa = o.fulfillment === 'delivery' ? 'levering' : 'afhentning';
+  return 'Kontant ved ' + fulfillmentDa;
+}
+
+function fulfillmentLabel(o) {
+  return o.fulfillment === 'delivery' ? 'Levering' : 'Afhentning';
 }
 
 function sendConfirmation(ctx) {
   const o = ctx.session.order;
   const summary = [
-    'Please confirm your order:',
+    'Bekraeft venligst din ordre:',
     '',
     formatCart(ctx.session.cart),
     '',
-    'Name: ' + o.name,
-    'Phone: ' + o.phone,
+    'Navn: ' + o.name,
+    'Telefon: ' + o.phone,
     'Telegram: @' + o.telegramUsername,
-    'Fulfillment: ' + o.fulfillment,
-    o.address ? ('Address: ' + o.address) : null,
+    'Metode: ' + fulfillmentLabel(o),
+    o.address ? ('Adresse: ' + o.address) : null,
     '',
-    'Payment: ' + paymentLabel(o),
+    'Betaling: ' + paymentLabel(o),
     ].filter(Boolean).join('\n');
 
 return ctx.reply(summary, Markup.inlineKeyboard([
-  [Markup.button.callback('Confirm order', 'confirm_order')],
-  [Markup.button.callback('Cancel', 'cancel_order')],
+  [Markup.button.callback('Bekraeft ordre', 'confirm_order')],
+  [Markup.button.callback('Annuller', 'cancel_order')],
   ]));
 }
 
 bot.action('cancel_order', (ctx) => {
   ctx.session = { cart: [], stage: null, order: {} };
-  ctx.editMessageText('Order cancelled. Send /start to begin again.');
+  ctx.editMessageText('Ordre annulleret. Send /start for at begynde igen.');
 });
 
 bot.action('confirm_order', async (ctx) => {
@@ -222,18 +234,18 @@ bot.action('confirm_order', async (ctx) => {
   const customer = ctx.from;
 
            const ownerMessage = [
-             'NEW ORDER',
+             'NY ORDRE',
              '',
              formatCart(cart),
              '',
-             'Name: ' + o.name,
-             'Phone: ' + o.phone,
+             'Navn: ' + o.name,
+             'Telefon: ' + o.phone,
              'Telegram: @' + o.telegramUsername,
-             'Fulfillment: ' + o.fulfillment,
-             o.address ? ('Address: ' + o.address) : null,
-             'Payment: ' + paymentLabel(o),
+             'Metode: ' + fulfillmentLabel(o),
+             o.address ? ('Adresse: ' + o.address) : null,
+             'Betaling: ' + paymentLabel(o),
              '',
-             'Telegram account id: ' + customer.id,
+             'Telegram konto id: ' + customer.id,
              ].filter(Boolean).join('\n');
 
            try {
@@ -242,9 +254,10 @@ bot.action('confirm_order', async (ctx) => {
              console.error('Failed to notify owner:', err);
            }
 
-           let confirmText = 'Order placed! We will be in touch to confirm ' + o.fulfillment + ' details. Thanks for choosing Runtz Farm!';
+           const fulfillmentDa = o.fulfillment === 'delivery' ? 'levering' : 'afhentning';
+  let confirmText = 'Ordre modtaget! Vi kontakter dig for at bekraefte detaljer om ' + fulfillmentDa + '. Tak fordi du valgte Runtz Farm!';
   if (o.payment === 'revolut' && REVOLUT_LINK) {
-    confirmText += '\n\nPay here: ' + REVOLUT_LINK;
+    confirmText += '\n\nBetal her: ' + REVOLUT_LINK;
   }
 
            await ctx.editMessageText(confirmText);
