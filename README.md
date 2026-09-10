@@ -6,7 +6,7 @@ or delivery, select a payment method, and send you the order, right inside Teleg
 ## Features
 
 ✅ **Menu Management** - Easy to edit products and prices  
-✅ **Multiple Payment Methods** - Cash, Stripe, Venmo, PayPal  
+✅ **Payment Methods** - Cash or Revolut  
 ✅ **Flexible Fulfillment** - Delivery or Pickup  
 ✅ **Order Tracking** - Unique order IDs for easy reference  
 ✅ **Auto-notifications** - Receive orders directly on Telegram  
@@ -35,13 +35,10 @@ own account, so it is allowed to message you first.
 3. Under Environment, add the required variables:
    - `BOT_TOKEN` = the token from Step 1
    - `OWNER_CHAT_ID` = the id from Step 2
+   - `REVOLUT_USERNAME` = your Revolut handle
+   - `REVOLUT_ENABLED` = true (to enable Revolut)
 
-4. (Optional) Add payment service credentials:
-   - `STRIPE_SECRET_KEY` and `STRIPE_PUBLISHABLE_KEY` for Stripe
-   - `VENMO_USERNAME` and `VENMO_ENABLED=true` for Venmo
-   - `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET` for PayPal
-
-5. Deploy. Once live, message your bot with `/start`.
+4. Deploy. Once live, message your bot with `/start`.
 
 ## Step 4 - Customize
 
@@ -78,9 +75,7 @@ You can then manually confirm and coordinate delivery/pickup timing.
 ## Payment Methods
 
 **💵 Cash** - Collect payment on pickup/delivery (no fees)  
-**💳 Stripe** - Card payments online (2.9% + $0.30 fee)  
-**📱 Venmo** - Request payment via Venmo  
-**🅿️ PayPal** - Online payment processing  
+**💎 Revolut** - Request payment via Revolut (1% fee)  
 
 ## Commands
 
@@ -93,7 +88,6 @@ You can then manually confirm and coordinate delivery/pickup timing.
 
 - Cart data is kept in memory, so a server restart clears in-progress carts
   (already-sent orders are unaffected).
-- Payment links are generated dynamically based on customer selections.
 - All orders include unique IDs for easy tracking.
 
 ## Troubleshooting
@@ -106,10 +100,8 @@ You can then manually confirm and coordinate delivery/pickup timing.
 - Confirm OWNER_CHAT_ID is your personal Telegram ID (not the bot's)
 - Check Telegram privacy settings allow bot messages
 
-**Payment methods not showing?**
-- For Stripe: add STRIPE_SECRET_KEY to environment
-- For Venmo: set VENMO_USERNAME and VENMO_ENABLED=true
-- For PayPal: add PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET
+**Revolut not showing?**
+- Set REVOLUT_USERNAME and REVOLUT_ENABLED=true in environment variables
 
 ## Support
 

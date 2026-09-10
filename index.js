@@ -260,10 +260,8 @@ bot.action('confirm_order', async (ctx) => {
   let customerMessage = '✅ Order placed!\n\n';
   if (o.paymentMethod === 'cash') {
     customerMessage += 'Payment: We will collect payment on ' + o.fulfillment + '.\n\n';
-  } else if (o.paymentMethod === 'venmo') {
-    customerMessage += 'Payment: Please send $' + o.total.toFixed(2) + ' via Venmo to @' + payments.venmo.username + ' with order ID: ' + orderId + '\n\n';
-  } else if (o.paymentMethod === 'stripe' || o.paymentMethod === 'paypal') {
-    customerMessage += 'Payment: We will send you a payment link shortly.\n\n';
+  } else if (o.paymentMethod === 'revolut') {
+    customerMessage += 'Payment: Please send $' + o.total.toFixed(2) + ' via Revolut to @' + payments.revolut.username + ' with order ID: ' + orderId + '\n\n';
   }
   customerMessage += 'We will be in touch to confirm ' + o.fulfillment + ' details. Thanks for choosing Runtz Farm! 🌿';
 
