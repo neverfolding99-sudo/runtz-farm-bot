@@ -1,18 +1,19 @@
-// RUNTZ FARM - MENU TEMPLATE
-// Edit this file to add, remove, or change products.
-// Each category is a list of items: { name, price, unit }
-// Prices are in DKK (Danish Krone)
+// RUNTZ FARM - MENU SKABELON
+// Rediger denne fil for at tilføje, fjerne eller ændre produkter.
+// Hver kategori er en liste over varer: { name, price, unit }
+// price er i kroner (kun tal, ingen kr-tegn)
+// Priserne herunder er pladsholdere, opdater dem med dine rigtige priser.
 
 module.exports = {
-  "Flower 🌸": [
-    { name: "La Runtz Cali 🌿", price: 300, unit: "1/8 oz" },
-    { name: "Exotic Static 🌿", price: 300, unit: "1/8 oz" },
-    { name: "Piatella 🌿", price: 300, unit: "1/8 oz" },
-    { name: "Plasma Static 🌿", price: 330, unit: "1/8 oz" },
-    { name: "White Gelato Cali 🌿", price: 300, unit: "1/8 oz" },
-  ],
-  "Edibles 🍬": [
-    { name: "Gummies 10-pack 🍭", price: 130, unit: "pack" },
-    { name: "Chocolate Bar 🍫", price: 100, unit: "bar" },
-  ],
-};
+  "Blomst 🌸": [
+    { name: "La Runtz Cali 🌿", price: 45, unit: "1/8 oz" },
+    { name: "Exotic Static 🌿", price: 45, unit: "1/8 oz" },
+    { name: "Piatella 🌿", price: 45, unit: "1/8 oz" },
+    { name: "Plasma Static 🌿", price: 50, unit: "1/8 oz" },
+    { name: "White Gelato Cali 🌿", price: 45, unit: "1/8 oz" },
+    ],
+  "Spisestykker 🍬": [
+    { name: "Gummibjørne 10-pak 🍭", price: 20, unit: "pak" },
+    { name: "Chokoladebar 🍫", price: 15, unit: "bar" },
+    ],
+  
