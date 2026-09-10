@@ -1,0 +1,15 @@
+{
+  "name": "runtz-farm-bot",
+    "version": "1.0.0",
+      "description": "Telegram order bot for Runtz Farm",
+        "main": "index.js",
+          "scripts": {
+              "start": "node index.js"
+                },
+                  "dependencies": {
+                      "telegraf": "^4.16.3",
+                          "express": "^4.19.2",
+                              "dotenv": "^16.4.5"
+                                }
+                                }
+                                
