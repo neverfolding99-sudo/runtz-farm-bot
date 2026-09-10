@@ -2,11 +2,10 @@ require('dotenv').config();
 const { Telegraf, Markup, session } = require('telegraf');
 const express = require('express');
 const menu = require('./config/menu');
-const paymentHandler = require('./lib/paymentHandler');
-const payments = require('./config/payments');
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const OWNER_CHAT_ID = process.env.OWNER_CHAT_ID;
+const REVOLUT_LINK = process.env.REVOLUT_LINK || null;
 
 if (!BOT_TOKEN) {
   console.error('Missing BOT_TOKEN in environment variables.');
@@ -32,65 +31,45 @@ function formatCart(cart) {
   let total = 0;
   const lines = cart.map((item, i) => {
     total += item.price;
-    return (i + 1) + '. ' + item.name + ' (' + item.unit + ') - ' + item.price + ' DKK';
+    return (i + 1) + '. ' + item.name + ' (' + item.unit + ') - $' + item.price;
   });
   lines.push('');
-  lines.push('Total: ' + total + ' DKK');
+  lines.push('Total: $' + total);
   return lines.join('\n');
-}
-
-function getCartTotal(cart) {
-  return cart.reduce((sum, item) => sum + item.price, 0);
 }
 
 function categoryKeyboard() {
   const buttons = Object.keys(menu).map((cat) => [
     Markup.button.callback(cat, 'cat:' + cat),
     ]);
-  buttons.push([Markup.button.callback('🛒 View Cart', 'view_cart')]);
+  buttons.push([Markup.button.callback('View Cart', 'view_cart')]);
   return Markup.inlineKeyboard(buttons);
 }
 
 function itemsKeyboard(category) {
   const items = menu[category];
   const buttons = items.map((item, i) => [
-    Markup.button.callback(item.name + ' - ' + item.price + ' DKK/' + item.unit, 'add:' + category + ':' + i),
+    Markup.button.callback(item.name + ' - $' + item.price + '/' + item.unit, 'add:' + category + ':' + i),
     ]);
-  buttons.push([Markup.button.callback('← Back to categories', 'back_to_categories')]);
+  buttons.push([Markup.button.callback('Back to categories', 'back_to_categories')]);
   return Markup.inlineKeyboard(buttons);
 }
 
 function cartKeyboard() {
   return Markup.inlineKeyboard([
-    [Markup.button.callback('➕ Add more items', 'back_to_categories')],
-    [Markup.button.callback('✅ Checkout', 'checkout')],
-    [Markup.button.callback('🗑️ Clear cart', 'clear_cart')],
-    ]);
-}
-
-function paymentMethodKeyboard() {
-  const methods = paymentHandler.getAvailableMethods();
-  const buttons = methods.map((method) => [
-    Markup.button.callback(paymentHandler.getMethodDescription(method), 'payment:' + method),
-    ]);
-  buttons.push([Markup.button.callback('← Back', 'back_to_categories')]);
-  return Markup.inlineKeyboard(buttons);
-}
-
-function fulfillmentKeyboard() {
-  return Markup.inlineKeyboard([
-    [Markup.button.callback('🚚 Delivery', 'fulfillment:delivery')],
-    [Markup.button.callback('🏪 Pickup', 'fulfillment:pickup')],
+    [Markup.button.callback('Add more items', 'back_to_categories')],
+    [Markup.button.callback('Checkout', 'checkout')],
+    [Markup.button.callback('Clear cart', 'clear_cart')],
     ]);
 }
 
 bot.start((ctx) => {
   ctx.session = { cart: [], stage: null, order: {} };
-  ctx.reply('🌿 Welcome to Runtz Farm! 🌿\n\nBrowse the menu below and tap items to add them to your cart. When you are ready, hit Checkout.', categoryKeyboard());
+  ctx.reply('Welcome to Runtz Farm! Browse the menu below and tap items to add them to your cart. When you are ready, hit Checkout.', categoryKeyboard());
 });
 
 bot.command('menu', (ctx) => {
-  ctx.reply('📋 Menu:', categoryKeyboard());
+  ctx.reply('Menu:', categoryKeyboard());
 });
 
 bot.command('cart', (ctx) => {
@@ -108,7 +87,7 @@ bot.action(/^cat:(.+)$/, (ctx) => {
 });
 
 bot.action('back_to_categories', (ctx) => {
-  ctx.editMessageText('📋 Menu:', categoryKeyboard());
+  ctx.editMessageText('Menu:', categoryKeyboard());
 });
 
 bot.action(/^add:(.+):(\d+)$/, (ctx) => {
@@ -116,7 +95,7 @@ bot.action(/^add:(.+):(\d+)$/, (ctx) => {
   const idx = parseInt(ctx.match[2], 10);
   const item = menu[category][idx];
   ctx.session.cart.push(item);
-  ctx.answerCbQuery('✅ Added ' + item.name + ' to cart');
+  ctx.answerCbQuery('Added ' + item.name + ' to cart');
 });
 
 bot.action('view_cart', (ctx) => {
@@ -125,7 +104,7 @@ bot.action('view_cart', (ctx) => {
 
 bot.action('clear_cart', (ctx) => {
   ctx.session.cart = [];
-  ctx.editMessageText('🗑️ Cart cleared.', categoryKeyboard());
+  ctx.editMessageText('Cart cleared.', categoryKeyboard());
 });
 
 bot.action('checkout', (ctx) => {
@@ -133,7 +112,10 @@ bot.action('checkout', (ctx) => {
     return ctx.answerCbQuery('Your cart is empty, add something first!');
   }
   ctx.session.stage = 'awaiting_fulfillment';
-  ctx.editMessageText('How would you like your order?', fulfillmentKeyboard());
+  ctx.editMessageText('How would you like your order?', Markup.inlineKeyboard([
+    [Markup.button.callback('Delivery', 'fulfillment:delivery')],
+    [Markup.button.callback('Pickup', 'fulfillment:pickup')],
+    ]));
 });
 
 bot.action(/^fulfillment:(delivery|pickup)$/, (ctx) => {
@@ -146,80 +128,87 @@ function suggestedUsername(ctx) {
   return ctx.from && ctx.from.username ? ctx.from.username : null;
 }
 
-bot.on('text', async (ctx) => {
-  const stage = ctx.session.stage;
-
-  if (stage === 'awaiting_name') {
-    ctx.session.order.name = ctx.message.text;
-    ctx.session.stage = 'awaiting_phone';
-    return ctx.reply('📱 What phone number can we reach you at?');
+function askPayment(ctx) {
+  if (!REVOLUT_LINK) {
+    ctx.session.order.payment = 'cash';
+    ctx.session.stage = 'confirming';
+    return sendConfirmation(ctx);
   }
+  ctx.session.stage = 'awaiting_payment';
+  return ctx.reply('How would you like to pay?', Markup.inlineKeyboard([
+    [Markup.button.callback('Cash on ' + ctx.session.order.fulfillment, 'payment:cash')],
+    [Markup.button.callback('Revolut Pay', 'payment:revolut')],
+    ]));
+}
 
-  if (stage === 'awaiting_phone') {
-    ctx.session.order.phone = ctx.message.text;
-    ctx.session.stage = 'awaiting_telegram';
-    const suggestion = suggestedUsername(ctx);
-    const hint = suggestion ? (' We have you as @' + suggestion + ', reply that or type a different one.') : ' Please type it without the @ sign.';
-    return ctx.reply('What is your Telegram username so we can message you there?' + hint);
-  }
-
-  if (stage === 'awaiting_telegram') {
-    let handle = ctx.message.text.trim();
-    if (handle.startsWith('@')) {
-      handle = handle.slice(1);
-    }
-    ctx.session.order.telegramUsername = handle;
-    if (ctx.session.order.fulfillment === 'delivery') {
-      ctx.session.stage = 'awaiting_address';
-      return ctx.reply('📍 What address should we deliver to?');
-    } else {
-      ctx.session.stage = 'awaiting_payment';
-      return ctx.editMessageText('💳 Select a payment method:', paymentMethodKeyboard());
-    }
-  }
-
-  if (stage === 'awaiting_address') {
-    ctx.session.order.address = ctx.message.text;
-    ctx.session.stage = 'awaiting_payment';
-    return ctx.editMessageText('💳 Select a payment method:', paymentMethodKeyboard());
-  }
-});
-
-bot.action(/^payment:(.+)$/, (ctx) => {
-  const method = ctx.match[1];
-  ctx.session.order.paymentMethod = method;
-
-  const subtotal = getCartTotal(ctx.session.cart);
-  ctx.session.order.subtotal = subtotal;
-  ctx.session.order.total = paymentHandler.calculateWithFees(subtotal, method);
-
+bot.action(/^payment:(cash|revolut)$/, (ctx) => {
+  ctx.session.order.payment = ctx.match[1];
   ctx.session.stage = 'confirming';
   return sendConfirmation(ctx);
 });
 
+bot.on('text', async (ctx) => {
+  const stage = ctx.session.stage;
+
+       if (stage === 'awaiting_name') {
+         ctx.session.order.name = ctx.message.text;
+         ctx.session.stage = 'awaiting_phone';
+         return ctx.reply('What phone number can we reach you at?');
+       }
+
+       if (stage === 'awaiting_phone') {
+         ctx.session.order.phone = ctx.message.text;
+         ctx.session.stage = 'awaiting_telegram';
+         const suggestion = suggestedUsername(ctx);
+         const hint = suggestion ? (' We have you as @' + suggestion + ', reply that or type a different one.') : ' Please type it without the @ sign.';
+         return ctx.reply('What is your Telegram username so we can message you there?' + hint);
+       }
+
+       if (stage === 'awaiting_telegram') {
+         let handle = ctx.message.text.trim();
+         if (handle.startsWith('@')) {
+           handle = handle.slice(1);
+         }
+         ctx.session.order.telegramUsername = handle;
+         if (ctx.session.order.fulfillment === 'delivery') {
+           ctx.session.stage = 'awaiting_address';
+           return ctx.reply('What address should we deliver to?');
+         } else {
+           return askPayment(ctx);
+         }
+       }
+
+       if (stage === 'awaiting_address') {
+         ctx.session.order.address = ctx.message.text;
+         return askPayment(ctx);
+       }
+});
+
+function paymentLabel(o) {
+  if (o.payment === 'revolut') return 'Revolut Pay';
+  return 'Cash on ' + o.fulfillment;
+}
+
 function sendConfirmation(ctx) {
   const o = ctx.session.order;
-  const cart = ctx.session.cart;
-  const subtotal = getCartTotal(cart);
-
   const summary = [
-    '✅ Please confirm your order:',
+    'Please confirm your order:',
     '',
-    formatCart(cart),
+    formatCart(ctx.session.cart),
     '',
     'Name: ' + o.name,
     'Phone: ' + o.phone,
     'Telegram: @' + o.telegramUsername,
-    'Fulfillment: ' + (o.fulfillment === 'delivery' ? '🚚 Delivery' : '🏪 Pickup'),
+    'Fulfillment: ' + o.fulfillment,
     o.address ? ('Address: ' + o.address) : null,
     '',
-    paymentHandler.formatPaymentSummary(subtotal, o.paymentMethod),
+    'Payment: ' + paymentLabel(o),
     ].filter(Boolean).join('\n');
 
-  return ctx.reply(summary, Markup.inlineKeyboard([
-    [Markup.button.callback('✅ Confirm order', 'confirm_order')],
-    [Markup.button.callback('❌ Cancel', 'cancel_order')],
-    ]));
+return ctx.reply(summary, Markup.inlineKeyboard([
+  [Markup.button.callback('Confirm order', 'confirm_order')],
+  [Markup.button.callback('Cancel', 'cancel_order')],
+  ]));
 }
 
 bot.action('cancel_order', (ctx) => {
@@ -231,52 +220,39 @@ bot.action('confirm_order', async (ctx) => {
   const o = ctx.session.order;
   const cart = ctx.session.cart;
   const customer = ctx.from;
-  const orderId = 'ORD_' + Date.now() + '_' + customer.id;
 
-  const ownerMessage = [
-    '🎉 NEW ORDER - ' + orderId,
-    '',
-    formatCart(cart),
-    '',
-    'Name: ' + o.name,
-    'Phone: ' + o.phone,
-    'Telegram: @' + o.telegramUsername,
-    'Fulfillment: ' + (o.fulfillment === 'delivery' ? '🚚 Delivery' : '🏪 Pickup'),
-    o.address ? ('Address: ' + o.address) : null,
-    '',
-    'Payment Method: ' + paymentHandler.getMethodDescription(o.paymentMethod),
-    paymentHandler.formatPaymentSummary(o.subtotal, o.paymentMethod),
-    '',
-    'Telegram account id: ' + customer.id,
-    'Telegram username: @' + (customer.username || 'N/A'),
-    ].filter(Boolean).join('\n');
+           const ownerMessage = [
+             'NEW ORDER',
+             '',
+             formatCart(cart),
+             '',
+             'Name: ' + o.name,
+             'Phone: ' + o.phone,
+             'Telegram: @' + o.telegramUsername,
+             'Fulfillment: ' + o.fulfillment,
+             o.address ? ('Address: ' + o.address) : null,
+             'Payment: ' + paymentLabel(o),
+             '',
+             'Telegram account id: ' + customer.id,
+             ].filter(Boolean).join('\n');
 
-  try {
-    await ctx.telegram.sendMessage(OWNER_CHAT_ID, ownerMessage);
-  } catch (err) {
-    console.error('Failed to notify owner:', err);
+           try {
+             await ctx.telegram.sendMessage(OWNER_CHAT_ID, ownerMessage);
+           } catch (err) {
+             console.error('Failed to notify owner:', err);
+           }
+
+           let confirmText = 'Order placed! We will be in touch to confirm ' + o.fulfillment + ' details. Thanks for choosing Runtz Farm!';
+  if (o.payment === 'revolut' && REVOLUT_LINK) {
+    confirmText += '\n\nPay here: ' + REVOLUT_LINK;
   }
 
-  let customerMessage = '✅ Order placed!\n\n';
-  if (o.paymentMethod === 'cash_dkk') {
-    customerMessage += 'Payment: We will collect ' + o.total + ' DKK cash on ' + o.fulfillment + '.\n\n';
-  } else if (o.paymentMethod === 'cash_eur') {
-    const eurAmount = paymentHandler.convertToEur(o.total);
-    customerMessage += 'Payment: We will collect approximately ' + eurAmount.toFixed(2) + ' EUR cash on ' + o.fulfillment + '.\n\n';
-  } else if (o.paymentMethod === 'crypto') {
-    const cryptoInfo = paymentHandler.getCryptoPaymentInfo(orderId, o.total);
-    if (cryptoInfo) {
-      customerMessage += 'Payment: ' + cryptoInfo.instructions + '\n\n';
-    }
-  }
-  customerMessage += 'We will be in touch to confirm ' + o.fulfillment + ' details. Thanks for choosing Runtz Farm! 🌿';
-
-  await ctx.editMessageText(customerMessage);
+           await ctx.editMessageText(confirmText);
   ctx.session = { cart: [], stage: null, order: {} };
 });
 
 bot.launch();
-console.log('🌿 Runtz Farm bot is running...');
+console.log('Runtz Farm bot is running...');
 
 const app = express();
 app.get('/', (req, res) => res.send('Runtz Farm bot is alive.'));
