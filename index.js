@@ -5,6 +5,7 @@ const menu = require('./config/menu');
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const OWNER_CHAT_ID = process.env.OWNER_CHAT_ID;
+const GROUP_CHAT_ID = process.env.GROUP_CHAT_ID || null;
 const REVOLUT_LINK = process.env.REVOLUT_LINK || null;
 
 if (!BOT_TOKEN) {
@@ -24,6 +25,10 @@ bot.use((ctx, next) => {
     ctx.session = { cart: [], stage: null, order: {} };
   }
   return next();
+});
+
+bot.command('groupid', (ctx) => {
+  ctx.reply('Chat id: ' + ctx.chat.id);
 });
 
 function formatCart(cart) {
@@ -258,7 +263,7 @@ bot.action('confirm_order', async (ctx) => {
   const cart = ctx.session.cart;
   const customer = ctx.from;
 
-           const ownerMessage = [
+           const orderMessage = [
              'NY ORDRE',
              '',
              formatCart(cart),
@@ -275,9 +280,17 @@ bot.action('confirm_order', async (ctx) => {
              ].filter(Boolean).join('\n');
 
            try {
-             await ctx.telegram.sendMessage(OWNER_CHAT_ID, ownerMessage);
+             await ctx.telegram.sendMessage(OWNER_CHAT_ID, orderMessage);
            } catch (err) {
              console.error('Failed to notify owner:', err);
+           }
+
+           if (GROUP_CHAT_ID) {
+             try {
+               await ctx.telegram.sendMessage(GROUP_CHAT_ID, orderMessage);
+             } catch (err) {
+               console.error('Failed to notify group:', err);
+             }
            }
 
            const fulfillmentDa = o.fulfillment === 'delivery' ? 'levering' : 'afhentning';
