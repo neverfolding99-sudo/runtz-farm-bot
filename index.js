@@ -32,10 +32,10 @@ function formatCart(cart) {
   let total = 0;
   const lines = cart.map((item, i) => {
     total += item.price;
-    return (i + 1) + '. ' + item.name + ' (' + item.unit + ') - $' + item.price;
+    return (i + 1) + '. ' + item.name + ' (' + item.unit + ') - ' + item.price + ' DKK';
   });
   lines.push('');
-  lines.push('Total: $' + total);
+  lines.push('Total: ' + total + ' DKK');
   return lines.join('\n');
 }
 
@@ -54,7 +54,7 @@ function categoryKeyboard() {
 function itemsKeyboard(category) {
   const items = menu[category];
   const buttons = items.map((item, i) => [
-    Markup.button.callback(item.name + ' - $' + item.price + '/' + item.unit, 'add:' + category + ':' + i),
+    Markup.button.callback(item.name + ' - ' + item.price + ' DKK/' + item.unit, 'add:' + category + ':' + i),
     ]);
   buttons.push([Markup.button.callback('← Back to categories', 'back_to_categories')]);
   return Markup.inlineKeyboard(buttons);
@@ -258,10 +258,16 @@ bot.action('confirm_order', async (ctx) => {
   }
 
   let customerMessage = '✅ Order placed!\n\n';
-  if (o.paymentMethod === 'cash') {
-    customerMessage += 'Payment: We will collect payment on ' + o.fulfillment + '.\n\n';
-  } else if (o.paymentMethod === 'revolut') {
-    customerMessage += 'Payment: Please send $' + o.total.toFixed(2) + ' via Revolut to @' + payments.revolut.username + ' with order ID: ' + orderId + '\n\n';
+  if (o.paymentMethod === 'cash_dkk') {
+    customerMessage += 'Payment: We will collect ' + o.total + ' DKK cash on ' + o.fulfillment + '.\n\n';
+  } else if (o.paymentMethod === 'cash_eur') {
+    const eurAmount = paymentHandler.convertToEur(o.total);
+    customerMessage += 'Payment: We will collect approximately ' + eurAmount.toFixed(2) + ' EUR cash on ' + o.fulfillment + '.\n\n';
+  } else if (o.paymentMethod === 'crypto') {
+    const cryptoInfo = paymentHandler.getCryptoPaymentInfo(orderId, o.total);
+    if (cryptoInfo) {
+      customerMessage += 'Payment: ' + cryptoInfo.instructions + '\n\n';
+    }
   }
   customerMessage += 'We will be in touch to confirm ' + o.fulfillment + ' details. Thanks for choosing Runtz Farm! 🌿';
 

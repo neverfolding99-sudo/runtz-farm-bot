@@ -1,20 +1,36 @@
 // PAYMENT CONFIGURATION
-// Supported payment methods: cash, revolut
+// Supported payment methods: cash_dkk, cash_eur, crypto
 
 module.exports = {
   // Enable/disable payment methods
   enabled: {
-    cash: true,
-    revolut: process.env.REVOLUT_ENABLED ? true : false,
+    cash_dkk: true,
+    cash_eur: true,
+    crypto: process.env.CRYPTO_ENABLED ? true : false,
   },
 
-  // Revolut configuration
-  revolut: {
-    username: process.env.REVOLUT_USERNAME, // Your Revolut username/handle
+  // Cash DKK configuration
+  cash_dkk: {
+    currency: 'DKK',
   },
 
-  // Fee percentage for Revolut payments (in decimal, e.g., 0.01 = 1%)
+  // Cash EUR configuration
+  cash_eur: {
+    currency: 'EUR',
+    exchangeRate: parseFloat(process.env.DKK_TO_EUR_RATE || '0.13'), // Default rate
+  },
+
+  // Crypto configuration
+  crypto: {
+    enabled: process.env.CRYPTO_ENABLED ? true : false,
+    walletAddress: process.env.CRYPTO_WALLET_ADDRESS, // Your crypto wallet address
+    coinType: process.env.CRYPTO_TYPE || 'BTC', // BTC, ETH, etc.
+  },
+
+  // Fee percentages (in decimal, e.g., 0.02 = 2%)
   fees: {
-    revolut: 0.01, // 1% for Revolut transfers (adjust as needed)
+    cash_dkk: 0, // No fee for cash DKK
+    cash_eur: 0, // No fee for cash EUR
+    crypto: 0.01, // 1% for crypto
   },
 };

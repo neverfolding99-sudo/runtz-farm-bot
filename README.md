@@ -6,9 +6,10 @@ or delivery, select a payment method, and send you the order, right inside Teleg
 ## Features
 
 ✅ **Menu Management** - Easy to edit products and prices  
-✅ **Payment Methods** - Cash or Revolut  
+✅ **Multiple Payment Methods** - Cash (DKK/EUR) or Crypto  
 ✅ **Flexible Fulfillment** - Delivery or Pickup  
 ✅ **Order Tracking** - Unique order IDs for easy reference  
+✅ **Multi-Currency Support** - DKK, EUR, and Crypto  
 ✅ **Auto-notifications** - Receive orders directly on Telegram  
 
 ## Step 1 - Create the bot with BotFather
@@ -35,8 +36,10 @@ own account, so it is allowed to message you first.
 3. Under Environment, add the required variables:
    - `BOT_TOKEN` = the token from Step 1
    - `OWNER_CHAT_ID` = the id from Step 2
-   - `REVOLUT_USERNAME` = your Revolut handle
-   - `REVOLUT_ENABLED` = true (to enable Revolut)
+   - `DKK_TO_EUR_RATE` = exchange rate (default: 0.13)
+   - `CRYPTO_ENABLED` = true (to enable crypto payments)
+   - `CRYPTO_TYPE` = BTC or ETH
+   - `CRYPTO_WALLET_ADDRESS` = your wallet address
 
 4. Deploy. Once live, message your bot with `/start`.
 
@@ -44,13 +47,13 @@ own account, so it is allowed to message you first.
 
 ### Editing the Menu
 
-Everything customers see lives in `config/menu.js`. 
+Everything customers see lives in `config/menu.js`. Prices are in DKK.
 
 ```javascript
 module.exports = {
   "Category 📝": [
-    { name: "Product Name 🌿", price: 45, unit: "1/8 oz" },
-    { name: "Another Product 🌿", price: 50, unit: "1/4 oz" },
+    { name: "Product Name 🌿", price: 300, unit: "1/8 oz" },
+    { name: "Another Product 🌿", price: 330, unit: "1/4 oz" },
   ],
 };
 ```
@@ -64,18 +67,21 @@ Edit `config/payments.js` to enable/disable payment methods and set fees.
 ## How Orders Reach You
 
 When a customer confirms an order, the bot sends you a message with:
-- Their cart and total
+- Their cart and total (in DKK)
 - Name, phone, Telegram handle
 - Delivery/pickup choice and address
 - Payment method and amount
+- EUR conversion (if applicable)
+- Crypto payment address (if applicable)
 - Order ID for tracking
 
 You can then manually confirm and coordinate delivery/pickup timing.
 
 ## Payment Methods
 
-**💵 Cash** - Collect payment on pickup/delivery (no fees)  
-**💎 Revolut** - Request payment via Revolut (1% fee)  
+**💵 DKK Cash** - Collect payment on pickup/delivery (no fees)  
+**💶 EUR Cash** - Auto-converts from DKK for EUR customers (no fees)  
+**🪙 Crypto** - BTC/ETH payments (1% fee)  
 
 ## Commands
 
@@ -86,9 +92,12 @@ You can then manually confirm and coordinate delivery/pickup timing.
 
 ## Notes
 
+- Prices are in DKK in the database
+- EUR conversion is automatic based on DKK_TO_EUR_RATE
 - Cart data is kept in memory, so a server restart clears in-progress carts
   (already-sent orders are unaffected).
 - All orders include unique IDs for easy tracking.
+- Crypto payments require a wallet address setup
 
 ## Troubleshooting
 
@@ -100,8 +109,8 @@ You can then manually confirm and coordinate delivery/pickup timing.
 - Confirm OWNER_CHAT_ID is your personal Telegram ID (not the bot's)
 - Check Telegram privacy settings allow bot messages
 
-**Revolut not showing?**
-- Set REVOLUT_USERNAME and REVOLUT_ENABLED=true in environment variables
+**Crypto payments not showing?**
+- Set CRYPTO_ENABLED=true and CRYPTO_WALLET_ADDRESS in environment variables
 
 ## Support
 
