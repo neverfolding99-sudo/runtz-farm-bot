@@ -5,24 +5,24 @@
 // Priserne herunder er PLACEHOLDERE, opdater dem til dine rigtige priser.
 
 module.exports = {
-  "Blomster 🌸": [
-    { name: "La Runtz Cali 🌿", price: 45, unit: "1/8 oz", description: "Sod og frugtig med et afslappende high." },
-    { name: "Exotic Static 🌿", price: 45, unit: "1/8 oz", description: "Eksotisk sort med unik, krystalliseret struktur." },
-    { name: "Piatella 🌿", price: 45, unit: "1/8 oz", description: "Blid og aromatisk, perfekt til afslapning." },
-    { name: "Plasma Static 🌿", price: 50, unit: "1/8 oz", description: "Kraftfuld sort med intens smag og effekt." },
-    { name: "White Gelato Cali 🌿", price: 45, unit: "1/8 oz", description: "Cremet og sod smag med et velafbalanceret high." },
+  "Menu Static/Cali 🌸": [
+    { name: "La Runtz Cali 🌿", price: 700, unit: "10 gram", description: "Sod og frugtig med et afslappende high." },
+    { name: "Exotic Static 🌿", price: 800, unit: "10 gram", description: "Eksotisk sort med unik, krystalliseret struktur." },
+    { name: "Piatella 🌿", price: 850, unit: "10 gram", description: "Blid og aromatisk, perfekt til afslapning." },
+    { name: "Plasma  Static 🌿", price: 700, unit: "10 gram", description: "Kraftfuld sort med intens smag og effekt." },
+    { name: "Gelato Cali 🌿", price: 800, unit: "12 gram", description: "Cremet og sod smag med et velafbalanceret high." },
     ],
-  "Spiseligt 🍬": [
-    { name: "Bolsjer 10-pak 🍭", price: 20, unit: "pakke", description: "10 stk frugtsmagende slik." },
-    { name: "Chokoladebar 🍫", price: 15, unit: "bar", description: "Laekker chokoladebar." },
+  " 🍬": [
+    { name: "Bolsjer 10-pak UDSOLGT  🍭", price: 20, unit: "pakke", description: "10 stk frugtsmagende slik." },
+    { name: "Chokoladebar USDSOLGT🍫", price: 15, unit: "bar", description: "Laekker chokoladebar." },
     ],
-  "Tinkturer 💧": [
-    { name: "CBD Olie 1000mg 💧", price: 45, unit: "flaske", description: "Hojkoncentreret CBD-olie." },
+  "Thc Olie 💧": [
+    { name: "THC Olie 1000mg UDSOLGT💧", price: 45, unit: "flaske", description: "Hojkoncentreret CBD-olie." },
     ],
   "Vapes 💨": [
-    { name: "Engangs Vape 💨", price: 30, unit: "stk", description: "Engangs vape, klar til brug." },
+    { name: "Engangs Vape UDSOLGT💨", price: 30, unit: "stk", description: "Engangs vape, klar til brug." },
     ],
-  "Cremer 🧴": [
-    { name: "CBD Creme 🧴", price: 25, unit: "glas", description: "Beroligende creme til huden." },
+    "THC CREME 🧴": [
+    { name: "THC Creme UDSOLGT🧴", price: 25, unit: "glas", description: "Beroligende creme til huden." },
     ],
 };
