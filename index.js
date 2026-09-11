@@ -314,3 +314,12 @@ app.listen(process.env.PORT || 3000, () => {
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
+
+
+const https = require('https');
+const SELF_URL = process.env.RENDER_EXTERNAL_URL || 'https://runtz-farm-bot.onrender.com';
+setInterval(() => {
+  https.get(SELF_URL, (res) => {
+    res.resume();
+  }).on('error', () => {});
+}, 10 * 60 * 1000);
