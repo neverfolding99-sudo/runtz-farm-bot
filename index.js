@@ -7,6 +7,10 @@ const BOT_TOKEN = process.env.BOT_TOKEN;
 const OWNER_CHAT_ID = process.env.OWNER_CHAT_ID;
 const GROUP_CHAT_ID = process.env.GROUP_CHAT_ID || null;
 const REVOLUT_LINK = process.env.REVOLUT_LINK || null;
+const DRIVER_CHAT_IDS = (process.env.DRIVER_CHAT_IDS || '')
+.split(',')
+.map((s) => s.trim())
+.filter(Boolean);
 
 if (!BOT_TOKEN) {
   console.error('Missing BOT_TOKEN in environment variables.');
@@ -30,6 +34,8 @@ bot.use((ctx, next) => {
 bot.command('groupid', (ctx) => {
   ctx.reply('Chat id: ' + ctx.chat.id);
 });
+
+const orderStore = {};
 
 function formatCart(cart) {
   if (cart.length === 0) return 'Din kurv er tom.';
@@ -258,40 +264,52 @@ bot.action('cancel_order', (ctx) => {
   ctx.editMessageText('Ordre annulleret. Send /start for at begynde igen.');
 });
 
+async function broadcastOrder(ctx, orderId, text, keyboard) {
+  const targets = [OWNER_CHAT_ID];
+  if (GROUP_CHAT_ID) targets.push(GROUP_CHAT_ID);
+  if (ctx.session.order.fulfillment === 'delivery') {
+    for (const id of DRIVER_CHAT_IDS) targets.push(id);
+  }
+  const refs = [];
+  for (const chatId of targets) {
+    try {
+      const sent = await ctx.telegram.sendMessage(chatId, text, keyboard);
+      refs.push({ chatId: sent.chat.id, messageId: sent.message_id });
+    } catch (err) {
+      console.error('Failed to notify ' + chatId + ':', err.message);
+    }
+  }
+  orderStore[orderId] = { text: text, refs: refs, claimedBy: null, completed: false };
+}
+
 bot.action('confirm_order', async (ctx) => {
   const o = ctx.session.order;
   const cart = ctx.session.cart;
   const customer = ctx.from;
+  const orderId = 'o' + Date.now();
 
-           const orderMessage = [
-             'NY ORDRE',
-             '',
-             formatCart(cart),
-             '',
-             'Navn: ' + o.name,
-             'Telefon: ' + o.phone,
-             'Telegram: @' + o.telegramUsername,
-             'Metode: ' + fulfillmentLabel(o),
-             o.address ? ('Adresse: ' + o.address) : null,
-             '📅 Onsket tidspunkt: ' + dayLabel(o) + ' kl. ' + o.time,
-             'Betaling: ' + paymentLabel(o),
-             '',
-             'Telegram konto id: ' + customer.id,
-             ].filter(Boolean).join('\n');
+           const header = o.fulfillment === 'delivery' ? '🚗 NY LEVERING' : '🏬 NY AFHENTNING';
+  const orderMessage = [
+    header,
+    '',
+    formatCart(cart),
+    '',
+    'Navn: ' + o.name,
+    'Telefon: ' + o.phone,
+    'Telegram: @' + o.telegramUsername,
+    'Metode: ' + fulfillmentLabel(o),
+    o.address ? ('Adresse: ' + o.address) : null,
+    '📅 Onsket tidspunkt: ' + dayLabel(o) + ' kl. ' + o.time,
+    'Betaling: ' + paymentLabel(o),
+    '',
+    'Telegram konto id: ' + customer.id,
+    ].filter(Boolean).join('\n');
 
-           try {
-             await ctx.telegram.sendMessage(OWNER_CHAT_ID, orderMessage);
-           } catch (err) {
-             console.error('Failed to notify owner:', err);
-           }
+           const claimKeyboard = Markup.inlineKeyboard([
+             [Markup.button.callback('🚗 Tag ordre', 'claim:' + orderId)],
+             ]);
 
-           if (GROUP_CHAT_ID) {
-             try {
-               await ctx.telegram.sendMessage(GROUP_CHAT_ID, orderMessage);
-             } catch (err) {
-               console.error('Failed to notify group:', err);
-             }
-           }
+           await broadcastOrder(ctx, orderId, orderMessage, claimKeyboard);
 
            const fulfillmentDa = o.fulfillment === 'delivery' ? 'levering' : 'afhentning';
   let confirmText = 'Ordre modtaget! Vi kontakter dig for at bekraefte detaljer om ' + fulfillmentDa + ' ' + dayLabel(o).toLowerCase() + ' kl. ' + o.time + '. Tak fordi du valgte Runtz Farm!';
@@ -301,6 +319,55 @@ bot.action('confirm_order', async (ctx) => {
 
            await ctx.editMessageText(confirmText);
   ctx.session = { cart: [], stage: null, order: {} };
+});
+
+bot.action(/^claim:(.+)$/, async (ctx) => {
+  const orderId = ctx.match[1];
+  const order = orderStore[orderId];
+  if (!order) {
+    return ctx.answerCbQuery('Ordren blev ikke fundet (botten er muligvis genstartet).');
+  }
+  if (order.claimedBy) {
+    return ctx.answerCbQuery('Allerede taget af ' + order.claimedBy);
+  }
+  const staffer = ctx.from.first_name || ctx.from.username || 'Ukendt';
+  order.claimedBy = staffer;
+  const newText = order.text + '\n\n🚗 Taget af: ' + staffer;
+  const newKeyboard = Markup.inlineKeyboard([
+    [Markup.button.callback('✅ Leveret / Afhentet', 'complete:' + orderId)],
+    ]);
+  for (const ref of order.refs) {
+    try {
+      await ctx.telegram.editMessageText(ref.chatId, ref.messageId, undefined, newText, newKeyboard);
+    } catch (err) {
+      console.error('Failed to update ref:', err.message);
+    }
+  }
+  ctx.answerCbQuery('Du har taget ordren!');
+});
+
+bot.action(/^complete:(.+)$/, async (ctx) => {
+  const orderId = ctx.match[1];
+  const order = orderStore[orderId];
+  if (!order) {
+    return ctx.answerCbQuery('Ordren blev ikke fundet (botten er muligvis genstartet).');
+  }
+  if (order.completed) {
+    return ctx.answerCbQuery('Allerede markeret som fuldfort.');
+  }
+  const staffer = ctx.from.first_name || ctx.from.username || 'Ukendt';
+  order.completed = true;
+  const base = order.claimedBy ? (order.text + '\n\n🚗 Taget af: ' + order.claimedBy) : order.text;
+  const newText = base + '\n\n✅ Fuldfort af: ' + staffer;
+  for (const ref of order.refs) {
+    try {
+      await ctx.telegram.editMessageText(ref.chatId, ref.messageId, undefined, newText);
+    } catch (err) {
+      console.error('Failed to update ref:', err.message);
+    }
+  }
+  ctx.answerCbQuery('Ordre markeret som fuldfort!');
+  delete orderStore[orderId];
 });
 
 bot.launch();
@@ -314,7 +381,6 @@ app.listen(process.env.PORT || 3000, () => {
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
-
 
 const https = require('https');
 const SELF_URL = process.env.RENDER_EXTERNAL_URL || 'https://runtz-farm-bot.onrender.com';
