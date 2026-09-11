@@ -6,15 +6,15 @@
 
 module.exports = {
   "Menu Static/Cali 🌸": [
-    { name: "La Runtz Cali 🌿", price: 700 DKK, unit: "10 gram", description: "Sod og frugtig med et afslappende high." },
-    { name: "Exotic Static 🌿", price: 800 DKK, unit: "10 gram", description: "Eksotisk sort med unik, krystalliseret struktur." },
-    { name: "Piatella 🌿", price: 850 DKK , unit: "10 gram", description: "Blid og aromatisk, perfekt til afslapning." },
-    { name: "Plasma  Static 🌿", price: 700 DKK , unit: "10 gram", description: "Kraftfuld sort med intens smag og effekt." },
-    { name: "Gelato Cali 🌿", price: 800 DKK, unit: "12 gram", description: "Cremet og sod smag med et velafbalanceret high." },
+    { name: "La Runtz Cali 🌿", price: 700DKK, unit: "10 gram", description: "Sod og frugtig med et afslappende high." },
+    { name: "Exotic Static 🌿", price: 800DKK, unit: "10 gram", description: "Eksotisk sort med unik, krystalliseret struktur." },
+    { name: "Piatella 🌿", price: 850DKK, unit: "10 gram", description: "Blid og aromatisk, perfekt til afslapning." },
+    { name: "Plasma  Static 🌿", price: 700DKK , unit: "10 gram", description: "Kraftfuld sort med intens smag og effekt." },
+    { name: "Gelato Cali 🌿", price: 800DKK, unit: "12 gram", description: "Cremet og sod smag med et velafbalanceret high." },
     ],
   " 🍬": [
     { name: "Bolsjer 10-pak UDSOLGT  🍭", price: 20, unit: "pakke", description: "10 stk frugtsmagende slik." },
-    { name: "Chokoladebar USDSOLGT🍫", price: 15, unit: "bar", description: "Laekker chokoladebar." },
+    { name: "Chokoladebar UDSOLGT🍫", price: 15, unit: "bar", description: "Laekker chokoladebar." },
     ],
   "Thc Olie 💧": [
     { name: "THC Olie 1000mg UDSOLGT💧", price: 45, unit: "flaske", description: "Hojkoncentreret CBD-olie." },
