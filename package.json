@@ -1,5 +1,26 @@
 {
   "name": "runtz-farm-bot",
+  "version": "3.0.0",
+  "description": "Telegram order bot for Runtz Farm",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "dependencies": {
+    "telegraf": "^4.12.0",
+    "express": "^4.18.0",
+    "dotenv": "^16.0.0",
+    "mongodb": "^6.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}{
+  "name": "runtz-farm-bot",
   "version": "2.0.0",
   "description": "Telegram order bot for Runtz Farm with enhanced payment processing",
   "main": "index.js",
