@@ -150,7 +150,7 @@ bot.action("PICKUP", (ctx) => {
 
 // STEP 2+3 — NAME / PHONE / ADDRESS / PAYMENT
 bot.on("text", async (ctx) => {
-  if (ctx.session.step === "Telegram name") {
+  if (ctx.session.step === "name") {
     ctx.session.order.name = ctx.message.text;
     ctx.session.step = "phone";
     return ctx.reply("Skriv dit *telefonnummer*:", { parse_mode: "Markdown" });
