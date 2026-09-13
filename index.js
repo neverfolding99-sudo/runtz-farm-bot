@@ -186,4 +186,71 @@ function paymentButtons() {
 }
 
 // PAYMENT SELECT
-bot.action(/PAY_(.+)/, async
+bot.action(/PAY_(.+)/, async (ctx) => {
+  const method = ctx.match[1];
+  ctx.session.order.payment = method;
+
+  const total = ctx.session.cart.reduce((sum, item) => sum + item.price, 0);
+  const paymentText = payment.getPaymentText(total);
+
+  ctx.reply(paymentText, { parse_mode: "Markdown" });
+
+  ctx.session.step = "confirm";
+
+  ctx.reply(
+    "Bekræft ordren:",
+    Markup.inlineKeyboard([
+      [Markup.button.callback("✔ Bekræft ordre", "FINAL_CONFIRM")],
+      [Markup.button.callback("❌ Annuller", "CANCEL_ORDER")]
+    ])
+  );
+});
+
+// FINAL CONFIRM
+bot.action("FINAL_CONFIRM", async (ctx) => {
+  const order = {
+    id: Math.floor(Math.random() * 90000) + 10000,
+    items: ctx.session.cart,
+    total: ctx.session.cart.reduce((sum, item) => sum + item.price, 0),
+    delivery: ctx.session.order.delivery,
+    name: ctx.session.order.name,
+    phone: ctx.session.order.phone,
+    address: ctx.session.order.address || "Afhentning",
+    payment: ctx.session.order.payment,
+    createdAt: new Date()
+  };
+
+  await ordersCollection.insertOne(order);
+
+  // Send to owner
+  bot.telegram.sendMessage(
+    process.env.OWNER_CHAT_ID,
+    `📦 *Ny ordre*\n\n` +
+    `ID: ${order.id}\n` +
+    `Navn: ${order.name}\n` +
+    `Telefon: ${order.phone}\n` +
+    `Adresse: ${order.address}\n` +
+    `Levering: ${order.delivery}\n` +
+    `Betaling: ${order.payment}\n\n` +
+    `Produkter:\n${order.items.map(i => `- ${i.name} (${i.price} DKK, ${i.unit})`).join("\n")}\n\n` +
+    `Total: ${order.total} DKK`,
+    { parse_mode: "Markdown" }
+  );
+
+  ctx.reply(
+    `✔ *Ordre bekræftet!*\n\nDit ordre‑ID: ${order.id}\nVi kontakter dig snarest.`,
+    { parse_mode: "Markdown" }
+  );
+
+  reset(ctx);
+});
+
+// CANCEL ORDER
+bot.action("CANCEL_ORDER", (ctx) => {
+  reset(ctx);
+  ctx.reply("Ordre annulleret.");
+});
+
+// LAUNCH
+bot.launch();
+console.log("TopShelfFarm bot is running...");
