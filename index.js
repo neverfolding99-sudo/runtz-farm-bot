@@ -2,7 +2,7 @@ require('dotenv').config();
 const { Telegraf, Markup, session } = require('telegraf');
 const express = require('express');
 const { MongoClient } = require('mongodb');
-const menu = require('./config/menu'); 
+const menu = require('./config/menu');
 const payment = require('./lib/paymentHandler');
 
 // EXPRESS KEEP-ALIVE SERVER (Render)
@@ -150,24 +150,21 @@ bot.action("PICKUP", (ctx) => {
 
 // STEP 2+3 — NAME / PHONE / ADDRESS / PAYMENT
 bot.on("text", async (ctx) => {
- if (ctx.session.step === "phone") {
-  ctx.session.order.phone = ctx.message.text;
-  ctx.session.step = "telegram";
-  return ctx.reply("Skriv dit *Telegram brugernavn* (uden @):", { parse_mode: "Markdown" });
-}
-
-if (ctx.session.step === "telegram") {
-  ctx.session.order.telegram = ctx.message.text;
-
-  if (ctx.session.order.delivery === "delivery") {
-    ctx.session.step = "address";
-    return ctx.reply("Skriv *leveringsadresse*:", { parse_mode: "Markdown" });
-  } else {
-    ctx.session.step = "payment";
-    return ctx.reply("Vælg betalingsmetode:", paymentButtons());
+  if (ctx.session.step === "Telegram name") {
+    ctx.session.order.name = ctx.message.text;
+    ctx.session.step = "phone";
+    return ctx.reply("Skriv dit *telefonnummer*:", { parse_mode: "Markdown" });
   }
-}
 
+  if (ctx.session.step === "phone") {
+    ctx.session.order.phone = ctx.message.text;
+
+    if (ctx.session.order.delivery === "delivery") {
+      ctx.session.step = "address";
+      return ctx.reply("Skriv *leveringsadresse*:", { parse_mode: "Markdown" });
+    } else {
+      ctx.session.step = "payment";
+      return ctx.reply("Vælg betalingsmetode:", paymentButtons());
     }
   }
 
