@@ -101,4 +101,89 @@ bot.hears("🛒 Kurv", (ctx) => {
   let text = "🛒 *Din kurv:*\n\n";
 
   ctx.session.cart.forEach((item, i) => {
-    text += `${i + 1}. ${item.name} — ${item
+    text += `${i + 1}. ${item.name} — ${item.price} DKK (${item.unit})\n`;
+  });
+
+  text += `\n*Total:* ${total} DKK`;
+
+  ctx.reply(
+    text,
+    Markup.inlineKeyboard([
+      [Markup.button.callback("✔ Bekræft ordre", "STEP_DELIVERY")],
+      [Markup.button.callback("❌ Ryd kurv", "CLEAR_CART")]
+    ]),
+    { parse_mode: "Markdown" }
+  );
+});
+
+// CLEAR CART
+bot.action("CLEAR_CART", (ctx) => {
+  ctx.session.cart = [];
+  ctx.reply("Kurven er ryddet.");
+});
+
+// STEP 1 — DELIVERY OR PICKUP
+bot.action("STEP_DELIVERY", (ctx) => {
+  ctx.session.step = "delivery";
+  ctx.reply(
+    "Hvordan vil du modtage ordren?",
+    Markup.inlineKeyboard([
+      [Markup.button.callback("🚚 Levering", "DELIVERY")],
+      [Markup.button.callback("📍 Afhentning", "PICKUP")]
+    ])
+  );
+});
+
+// DELIVERY
+bot.action("DELIVERY", (ctx) => {
+  ctx.session.order.delivery = "delivery";
+  ctx.session.step = "name";
+  ctx.reply("Skriv dit *navn*:", { parse_mode: "Markdown" });
+});
+
+// PICKUP
+bot.action("PICKUP", (ctx) => {
+  ctx.session.order.delivery = "pickup";
+  ctx.session.step = "name";
+  ctx.reply("Skriv dit *navn*:", { parse_mode: "Markdown" });
+});
+
+// STEP 2+3 — NAME / PHONE / ADDRESS / PAYMENT
+bot.on("text", async (ctx) => {
+  if (ctx.session.step === "name") {
+    ctx.session.order.name = ctx.message.text;
+    ctx.session.step = "phone";
+    return ctx.reply("Skriv dit *telefonnummer*:", { parse_mode: "Markdown" });
+  }
+
+  if (ctx.session.step === "phone") {
+    ctx.session.order.phone = ctx.message.text;
+
+    if (ctx.session.order.delivery === "delivery") {
+      ctx.session.step = "address";
+      return ctx.reply("Skriv *leveringsadresse*:", { parse_mode: "Markdown" });
+    } else {
+      ctx.session.step = "payment";
+      return ctx.reply("Vælg betalingsmetode:", paymentButtons());
+    }
+  }
+
+  if (ctx.session.step === "address") {
+    ctx.session.order.address = ctx.message.text;
+    ctx.session.step = "payment";
+    return ctx.reply("Vælg betalingsmetode:", paymentButtons());
+  }
+});
+
+// PAYMENT BUTTONS
+function paymentButtons() {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback("💵 DKK", "PAY_DKK")],
+    [Markup.button.callback("💶 EUR", "PAY_EUR")],
+    [Markup.button.callback("🪙 Crypto", "PAY_CRYPTO")],
+    [Markup.button.callback("💳 Revolut", "PAY_REV")]
+  ]);
+}
+
+// PAYMENT SELECT
+bot.action(/PAY_(.+)/, async
