@@ -7,385 +7,238 @@ const BOT_TOKEN = process.env.BOT_TOKEN;
 const OWNER_CHAT_ID = process.env.OWNER_CHAT_ID;
 const GROUP_CHAT_ID = process.env.GROUP_CHAT_ID || null;
 const REVOLUT_LINK = process.env.REVOLUT_LINK || null;
+const CRYPTO_ENABLED = process.env.CRYPTO_ENABLED === 'true';
+const CRYPTO_WALLET_ADDRESS = process.env.CRYPTO_WALLET_ADDRESS || null;
+const CRYPTO_TYPE = process.env.CRYPTO_TYPE || 'BTC';
 const DRIVER_CHAT_IDS = (process.env.DRIVER_CHAT_IDS || '')
-.split(',')
-.map((s) => s.trim())
-.filter(Boolean);
+  .split(',').map((s) => s.trim()).filter(Boolean);
 
-if (!BOT_TOKEN) {
-  console.error('Missing BOT_TOKEN in environment variables.');
-  process.exit(1);
-}
-if (!OWNER_CHAT_ID) {
-  console.error('Missing OWNER_CHAT_ID in environment variables.');
-  process.exit(1);
-}
+if (!BOT_TOKEN) { console.error('Missing BOT_TOKEN'); process.exit(1); }
+if (!OWNER_CHAT_ID) { console.error('Missing OWNER_CHAT_ID'); process.exit(1); }
 
 const bot = new Telegraf(BOT_TOKEN);
 bot.use(session());
 
+const approvedUsers = new Set([String(OWNER_CHAT_ID)]);
+const pendingApprovals = new Map();
+
+async function requestApproval(ctx) {
+  const user = ctx.from;
+  const userId = String(user.id);
+  const displayName = [user.first_name, user.last_name].filter(Boolean).join(' ');
+  const handle = user.username ? ('@' + user.username) : 'ingen brugernavn';
+  await ctx.telegram.sendMessage(OWNER_CHAT_ID,
+    'NY ADGANGSANMODNING
+
+Navn: ' + displayName + '
+Telegram: ' + handle + '
+ID: ' + userId,
+    Markup.inlineKeyboard([[
+      Markup.button.callback('Godkend', 'approve:' + userId),
+      Markup.button.callback('Afvis', 'deny:' + userId),
+    ]])
+  );
+  await ctx.reply('Din adgangsanmodning er sendt. Vent venligst pa godkendelse.');
+}
+
+bot.action(/^approve:(\d+)$/, async (ctx) => {
+  const userId = ctx.match[1];
+  approvedUsers.add(userId);
+  await ctx.answerCbQuery('Bruger godkendt');
+  await ctx.editMessageText(ctx.callbackQuery.message.text + '
+
+GODKENDT');
+  try { await ctx.telegram.sendMessage(userId, 'Du er godkendt! Send /start for at begynde.'); } catch(e) {}
+});
+
+bot.action(/^deny:(\d+)$/, async (ctx) => {
+  const userId = ctx.match[1];
+  await ctx.answerCbQuery('Bruger afvist');
+  await ctx.editMessageText(ctx.callbackQuery.message.text + '
+
+AFVIST');
+  try { await ctx.telegram.sendMessage(userId, 'Din anmodning blev afvist.'); } catch(e) {}
+});
+
 bot.use((ctx, next) => {
-  if (!ctx.session) {
-    ctx.session = { cart: [], stage: null, order: {} };
-  }
+  if (!ctx.session) ctx.session = { cart: [], stage: null, order: {} };
   return next();
 });
 
-bot.command('groupid', (ctx) => {
-  ctx.reply('Chat id: ' + ctx.chat.id);
+bot.use(async (ctx, next) => {
+  if (ctx.callbackQuery) {
+    const data = ctx.callbackQuery.data || '';
+    if (data.startsWith('approve:') || data.startsWith('deny:')) return next();
+  }
+  const userId = String(ctx.from && ctx.from.id);
+  if (userId === String(OWNER_CHAT_ID) || approvedUsers.has(userId)) return next();
+  if (!pendingApprovals.has(userId)) { pendingApprovals.set(userId, true); await requestApproval(ctx); }
+  else await ctx.reply('Din anmodning afventer stadig godkendelse.');
 });
 
 const orderStore = {};
 
 function formatCart(cart) {
-  if (cart.length === 0) return 'Din kurv er tom.';
+  if (!cart.length) return 'Din kurv er tom.';
   let total = 0;
-  const lines = cart.map((item, i) => {
-    total += item.price;
-    return (i + 1) + '. ' + item.name + ' (' + item.unit + ') - $' + item.price;
-  });
-  lines.push('');
-  lines.push('Total: $' + total);
-  return lines.join('\n');
-}
+  const lines = cart.map((item, i) => { total += item.price; return (i+1) + '. ' + item.name + ' (' + item.unit + ') - ' + item.price + ' kr.'; });
+  return lines.join('
+') + '
 
-function categoryText(category) {
-  const items = menu[category];
-  const lines = items.map((item, i) => (i + 1) + '. ' + item.name + ' - $' + item.price + '/' + item.unit + '\n' + item.description);
-  return category + ':\n\n' + lines.join('\n\n');
+Total: ' + total + ' kr.';
 }
+function cartTotal(cart) { return cart.reduce((s,i) => s+i.price, 0); }
+function categoryText(cat) {
+  return cat + ':
 
+' + menu[cat].map((item,i) => (i+1)+'. '+item.name+' - '+item.price+' kr./'+item.unit+'
+'+item.description).join('
+
+');
+}
 function categoryKeyboard() {
-  const buttons = Object.keys(menu).map((cat) => [
-    Markup.button.callback(cat, 'cat:' + cat),
-    ]);
-  buttons.push([Markup.button.callback('Se kurv', 'view_cart')]);
-  return Markup.inlineKeyboard(buttons);
+  const btns = Object.keys(menu).map(cat => [Markup.button.callback(cat, 'cat:'+cat)]);
+  btns.push([Markup.button.callback('Se kurv', 'view_cart')]);
+  return Markup.inlineKeyboard(btns);
 }
-
-function itemsKeyboard(category) {
-  const items = menu[category];
-  const buttons = items.map((item, i) => [
-    Markup.button.callback(item.name + ' - $' + item.price + '/' + item.unit, 'add:' + category + ':' + i),
-    ]);
-  buttons.push([Markup.button.callback('Tilbage til kategorier', 'back_to_categories')]);
-  return Markup.inlineKeyboard(buttons);
+function itemsKeyboard(cat) {
+  const btns = menu[cat].map((item,i) => [Markup.button.callback(item.name+' - '+item.price+' kr./'+item.unit, 'add:'+cat+':'+i)]);
+  btns.push([Markup.button.callback('Tilbage', 'back_to_categories')]);
+  return Markup.inlineKeyboard(btns);
 }
-
 function cartKeyboard() {
   return Markup.inlineKeyboard([
     [Markup.button.callback('Tilfoj flere varer', 'back_to_categories')],
     [Markup.button.callback('Til kassen', 'checkout')],
     [Markup.button.callback('Ryd kurv', 'clear_cart')],
-    ]);
+  ]);
 }
 
-bot.start((ctx) => {
-  ctx.session = { cart: [], stage: null, order: {} };
-  ctx.reply('Velkommen til Runtz Farm! Se menuen nedenfor og tryk pa varer for at tilfoje dem til din kurv. Nar du er klar, tryk Til kassen.', categoryKeyboard());
-});
+bot.command('groupid', ctx => ctx.reply('Chat id: ' + ctx.chat.id));
+bot.start(ctx => { ctx.session = {cart:[],stage:null,order:{}}; ctx.reply('Velkommen til Runtz Farm! Se menuen nedenfor.', categoryKeyboard()); });
+bot.command('menu', ctx => ctx.reply('Menu:', categoryKeyboard()));
+bot.command('cart', ctx => ctx.reply(formatCart(ctx.session.cart), cartKeyboard()));
+bot.command('cancel', ctx => { ctx.session={cart:[],stage:null,order:{}}; ctx.reply('Annulleret. Send /start for at begynde igen.'); });
 
-bot.command('menu', (ctx) => {
-  ctx.reply('Menu:', categoryKeyboard());
-});
+bot.action(/^cat:(.+)$/, ctx => ctx.editMessageText(categoryText(ctx.match[1]), itemsKeyboard(ctx.match[1])));
+bot.action('back_to_categories', ctx => ctx.editMessageText('Menu:', categoryKeyboard()));
+bot.action(/^add:(.+):(\d+)$/, ctx => { const item=menu[ctx.match[1]][parseInt(ctx.match[2],10)]; ctx.session.cart.push(item); ctx.answerCbQuery(item.name+' tilfojet'); });
+bot.action('view_cart', ctx => ctx.editMessageText(formatCart(ctx.session.cart), cartKeyboard()));
+bot.action('clear_cart', ctx => { ctx.session.cart=[]; ctx.editMessageText('Kurv ryddet.', categoryKeyboard()); });
 
-bot.command('cart', (ctx) => {
-  ctx.reply(formatCart(ctx.session.cart), cartKeyboard());
-});
-
-bot.command('cancel', (ctx) => {
-  ctx.session = { cart: [], stage: null, order: {} };
-  ctx.reply('Ordre annulleret. Send /start for at begynde igen.');
-});
-
-bot.action(/^cat:(.+)$/, (ctx) => {
-  const category = ctx.match[1];
-  ctx.editMessageText(categoryText(category), itemsKeyboard(category));
-});
-
-bot.action('back_to_categories', (ctx) => {
-  ctx.editMessageText('Menu:', categoryKeyboard());
-});
-
-bot.action(/^add:(.+):(\d+)$/, (ctx) => {
-  const category = ctx.match[1];
-  const idx = parseInt(ctx.match[2], 10);
-  const item = menu[category][idx];
-  ctx.session.cart.push(item);
-  ctx.answerCbQuery(item.name + ' tilfojet til kurv');
-});
-
-bot.action('view_cart', (ctx) => {
-  ctx.editMessageText(formatCart(ctx.session.cart), cartKeyboard());
-});
-
-bot.action('clear_cart', (ctx) => {
-  ctx.session.cart = [];
-  ctx.editMessageText('Kurv ryddet.', categoryKeyboard());
-});
-
-bot.action('checkout', (ctx) => {
-  if (ctx.session.cart.length === 0) {
-    return ctx.answerCbQuery('Din kurv er tom, tilfoj noget forst!');
-  }
+bot.action('checkout', ctx => {
+  if (!ctx.session.cart.length) return ctx.answerCbQuery('Din kurv er tom!');
   ctx.session.stage = 'awaiting_fulfillment';
-  ctx.editMessageText('Hvordan vil du gerne have din ordre?', Markup.inlineKeyboard([
+  ctx.editMessageText('Levering eller afhentning?', Markup.inlineKeyboard([
     [Markup.button.callback('Levering', 'fulfillment:delivery')],
     [Markup.button.callback('Afhentning', 'fulfillment:pickup')],
-    ]));
+  ]));
 });
-
-bot.action(/^fulfillment:(delivery|pickup)$/, (ctx) => {
-  ctx.session.order.fulfillment = ctx.match[1];
-  ctx.session.stage = 'awaiting_name';
-  ctx.editMessageText('Hvilket navn skal vi saette pa ordren?');
-});
-
-function suggestedUsername(ctx) {
-  return ctx.from && ctx.from.username ? ctx.from.username : null;
-}
+bot.action(/^fulfillment:(delivery|pickup)$/, ctx => { ctx.session.order.fulfillment=ctx.match[1]; ctx.session.stage='awaiting_name'; ctx.editMessageText('Hvad er dit navn?'); });
 
 function askTiming(ctx) {
   ctx.session.stage = 'awaiting_timing';
-  return ctx.reply('Hvornar vil du gerne have din ordre? ✨', Markup.inlineKeyboard([
-    [Markup.button.callback('I dag', 'timing:today')],
-    [Markup.button.callback('I morgen', 'timing:tomorrow')],
-    ]));
+  return ctx.reply('Hvornaar?', Markup.inlineKeyboard([[Markup.button.callback('I dag','timing:today'),(Markup.button.callback('I morgen','timing:tomorrow'))]]));
 }
-
-bot.action(/^timing:(today|tomorrow)$/, (ctx) => {
-  ctx.session.order.day = ctx.match[1];
-  ctx.session.stage = 'awaiting_time';
-  const dayDa = ctx.match[1] === 'today' ? 'i dag' : 'i morgen';
-  return ctx.editMessageText('Perfekt, ' + dayDa + '. Hvilket klokkeslaet passer dig? (f.eks. 16:00)');
-});
+bot.action(/^timing:(today|tomorrow)$/, ctx => { ctx.session.order.day=ctx.match[1]; ctx.session.stage='awaiting_time'; ctx.editMessageText('Klokkeslaet? (f.eks. 16:00)'); });
 
 function askPayment(ctx) {
-  if (!REVOLUT_LINK) {
-    ctx.session.order.payment = 'cash';
-    ctx.session.stage = 'confirming';
-    return sendConfirmation(ctx);
-  }
   ctx.session.stage = 'awaiting_payment';
-  const fulfillmentDa = ctx.session.order.fulfillment === 'delivery' ? 'levering' : 'afhentning';
-  return ctx.reply('Hvordan vil du gerne betale?', Markup.inlineKeyboard([
-    [Markup.button.callback('Kontant ved ' + fulfillmentDa, 'payment:cash')],
-    [Markup.button.callback('Revolut Pay', 'payment:revolut')],
-    ]));
+  const da = ctx.session.order.fulfillment==='delivery'?'levering':'afhentning';
+  const btns = [[Markup.button.callback('Kontant ved '+da+' (DKK)','payment:cash_dkk')]];
+  if (REVOLUT_LINK) btns.push([Markup.button.callback('Revolut Pay','payment:revolut')]);
+  if (CRYPTO_ENABLED && CRYPTO_WALLET_ADDRESS) btns.push([Markup.button.callback('Krypto ('+CRYPTO_TYPE+')','payment:crypto')]);
+  return ctx.reply('Betaling?', Markup.inlineKeyboard(btns));
 }
+bot.action(/^payment:(cash_dkk|revolut|crypto)$/, ctx => { ctx.session.order.payment=ctx.match[1]; ctx.session.stage='confirming'; return sendConfirmation(ctx); });
 
-bot.action(/^payment:(cash|revolut)$/, (ctx) => {
-  ctx.session.order.payment = ctx.match[1];
-  ctx.session.stage = 'confirming';
-  return sendConfirmation(ctx);
-});
-
-bot.on('text', async (ctx) => {
-  const stage = ctx.session.stage;
-
-       if (stage === 'awaiting_name') {
-         ctx.session.order.name = ctx.message.text;
-         ctx.session.stage = 'awaiting_phone';
-         return ctx.reply('Hvilket telefonnummer kan vi kontakte dig pa?');
-       }
-
-       if (stage === 'awaiting_phone') {
-         ctx.session.order.phone = ctx.message.text;
-         ctx.session.stage = 'awaiting_telegram';
-         const suggestion = suggestedUsername(ctx);
-         const hint = suggestion ? (' Vi har dig som @' + suggestion + ', svar det eller skriv et andet.') : ' Skriv det uden @ tegnet.';
-         return ctx.reply('Hvad er dit Telegram brugernavn, sa vi kan skrive til dig der?' + hint);
-       }
-
-       if (stage === 'awaiting_telegram') {
-         let handle = ctx.message.text.trim();
-         if (handle.startsWith('@')) {
-           handle = handle.slice(1);
-         }
-         ctx.session.order.telegramUsername = handle;
-         if (ctx.session.order.fulfillment === 'delivery') {
-           ctx.session.stage = 'awaiting_address';
-           return ctx.reply('Hvilken adresse skal vi levere til?');
-         } else {
-           return askTiming(ctx);
-         }
-       }
-
-       if (stage === 'awaiting_address') {
-         ctx.session.order.address = ctx.message.text;
-         return askTiming(ctx);
-       }
-
-       if (stage === 'awaiting_time') {
-         ctx.session.order.time = ctx.message.text;
-         return askPayment(ctx);
-       }
+bot.on('text', async ctx => {
+  const s = ctx.session.stage;
+  if (s==='awaiting_name') { ctx.session.order.name=ctx.message.text; ctx.session.stage='awaiting_phone'; return ctx.reply('Telefonnummer?'); }
+  if (s==='awaiting_phone') { ctx.session.order.phone=ctx.message.text; ctx.session.stage='awaiting_telegram'; return ctx.reply('Telegram brugernavn?'+(ctx.from.username?' (@'+ctx.from.username+')'':'')); }
+  if (s==='awaiting_telegram') {
+    let h=ctx.message.text.trim(); if(h.startsWith('@')) h=h.slice(1); ctx.session.order.telegramUsername=h;
+    if (ctx.session.order.fulfillment==='delivery') { ctx.session.stage='awaiting_address'; return ctx.reply('Adresse?'); }
+    return askTiming(ctx);
+  }
+  if (s==='awaiting_address') { ctx.session.order.address=ctx.message.text; return askTiming(ctx); }
+  if (s==='awaiting_time') { ctx.session.order.time=ctx.message.text; return askPayment(ctx); }
 });
 
 function paymentLabel(o) {
-  if (o.payment === 'revolut') return 'Revolut Pay';
-  const fulfillmentDa = o.fulfillment === 'delivery' ? 'levering' : 'afhentning';
-  return 'Kontant ved ' + fulfillmentDa;
-}
-
-function fulfillmentLabel(o) {
-  return o.fulfillment === 'delivery' ? 'Levering' : 'Afhentning';
-}
-
-function dayLabel(o) {
-  return o.day === 'today' ? 'I dag' : 'I morgen';
+  if (o.payment==='revolut') return 'Revolut Pay';
+  if (o.payment==='crypto') return 'Krypto ('+CRYPTO_TYPE+')';
+  return 'Kontant ved '+(o.fulfillment==='delivery'?'levering':'afhentning')+' (DKK)';
 }
 
 function sendConfirmation(ctx) {
-  const o = ctx.session.order;
-  const summary = [
-    'Bekraeft venligst din ordre:',
-    '',
-    formatCart(ctx.session.cart),
-    '',
-    'Navn: ' + o.name,
-    'Telefon: ' + o.phone,
-    'Telegram: @' + o.telegramUsername,
-    'Metode: ' + fulfillmentLabel(o),
-    o.address ? ('Adresse: ' + o.address) : null,
-    '📅 Onsket tidspunkt: ' + dayLabel(o) + ' kl. ' + o.time,
-    '',
-    'Betaling: ' + paymentLabel(o),
-    ].filter(Boolean).join('\n');
-
-return ctx.reply(summary, Markup.inlineKeyboard([
-  [Markup.button.callback('Bekraeft ordre', 'confirm_order')],
-  [Markup.button.callback('Annuller', 'cancel_order')],
-  ]));
+  const o=ctx.session.order;
+  const lines=['Bekraeft din ordre:','',formatCart(ctx.session.cart),'','Navn: '+o.name,'Telefon: '+o.phone,'Telegram: @'+o.telegramUsername,'Metode: '+(o.fulfillment==='delivery'?'Levering':'Afhentning')];
+  if (o.address) lines.push('Adresse: '+o.address);
+  lines.push('Tidspunkt: '+(o.day==='today'?'I dag':'I morgen')+' kl. '+o.time,'','Betaling: '+paymentLabel(o));
+  return ctx.reply(lines.join('
+'), Markup.inlineKeyboard([[Markup.button.callback('Bekraeft','confirm_order'),Markup.button.callback('Annuller','cancel_order')]]));
 }
 
-bot.action('cancel_order', (ctx) => {
-  ctx.session = { cart: [], stage: null, order: {} };
-  ctx.editMessageText('Ordre annulleret. Send /start for at begynde igen.');
-});
+bot.action('cancel_order', ctx => { ctx.session={cart:[],stage:null,order:{}}; ctx.editMessageText('Annulleret. /start for at begynde igen.'); });
 
 async function broadcastOrder(ctx, orderId, text, keyboard) {
-  const targets = [OWNER_CHAT_ID];
-  if (GROUP_CHAT_ID) targets.push(GROUP_CHAT_ID);
-  if (ctx.session.order.fulfillment === 'delivery') {
-    for (const id of DRIVER_CHAT_IDS) targets.push(id);
-  }
-  const refs = [];
-  for (const chatId of targets) {
-    try {
-      const sent = await ctx.telegram.sendMessage(chatId, text, keyboard);
-      refs.push({ chatId: sent.chat.id, messageId: sent.message_id });
-    } catch (err) {
-      console.error('Failed to notify ' + chatId + ':', err.message);
-    }
-  }
-  orderStore[orderId] = { text: text, refs: refs, claimedBy: null, completed: false };
+  const targets=[OWNER_CHAT_ID]; if(GROUP_CHAT_ID) targets.push(GROUP_CHAT_ID);
+  if (ctx.session.order.fulfillment==='delivery') for(const id of DRIVER_CHAT_IDS) targets.push(id);
+  const refs=[];
+  for(const chatId of targets) { try { const sent=await ctx.telegram.sendMessage(chatId,text,keyboard); refs.push({chatId:sent.chat.id,messageId:sent.message_id}); } catch(err){console.error('Failed:',err.message);} }
+  orderStore[orderId]={text,refs,claimedBy:null,completed:false};
 }
 
-bot.action('confirm_order', async (ctx) => {
-  const o = ctx.session.order;
-  const cart = ctx.session.cart;
-  const customer = ctx.from;
-  const orderId = 'o' + Date.now();
+bot.action('confirm_order', async ctx => {
+  const o=ctx.session.order; const cart=ctx.session.cart; const total=cartTotal(cart); const orderId='o'+Date.now();
+  const orderMsg=['NY '+(o.fulfillment==='delivery'?'LEVERING':'AFHENTNING'),'',formatCart(cart),'','Navn: '+o.name,'Telefon: '+o.phone,'Telegram: @'+o.telegramUsername,'Metode: '+(o.fulfillment==='delivery'?'Levering':'Afhentning')];
+  if(o.address) orderMsg.push('Adresse: '+o.address);
+  orderMsg.push('Tidspunkt: '+(o.day==='today'?'I dag':'I morgen')+' kl. '+o.time,'Betaling: '+paymentLabel(o),'','Telegram ID: '+ctx.from.id,'Ordre ID: '+orderId);
+  await broadcastOrder(ctx, orderId, orderMsg.join('
+'), Markup.inlineKeyboard([[Markup.button.callback('Tag ordre','claim:'+orderId)]]));
+  const da=o.fulfillment==='delivery'?'levering':'afhentning';
+  let msg='Ordre modtaget! Vi kontakter dig om '+da+' '+(o.day==='today'?'i dag':'i morgen')+' kl. '+o.time+'. Tak!';
+  if(o.payment==='revolut'&&REVOLUT_LINK) msg+='
 
-           const header = o.fulfillment === 'delivery' ? '🚗 NY LEVERING' : '🏬 NY AFHENTNING';
-  const orderMessage = [
-    header,
-    '',
-    formatCart(cart),
-    '',
-    'Navn: ' + o.name,
-    'Telefon: ' + o.phone,
-    'Telegram: @' + o.telegramUsername,
-    'Metode: ' + fulfillmentLabel(o),
-    o.address ? ('Adresse: ' + o.address) : null,
-    '📅 Onsket tidspunkt: ' + dayLabel(o) + ' kl. ' + o.time,
-    'Betaling: ' + paymentLabel(o),
-    '',
-    'Telegram konto id: ' + customer.id,
-    ].filter(Boolean).join('\n');
+Betal: '+REVOLUT_LINK;
+  if(o.payment==='crypto'&&CRYPTO_WALLET_ADDRESS) msg+='
 
-           const claimKeyboard = Markup.inlineKeyboard([
-             [Markup.button.callback('🚗 Tag ordre', 'claim:' + orderId)],
-             ]);
-
-           await broadcastOrder(ctx, orderId, orderMessage, claimKeyboard);
-
-           const fulfillmentDa = o.fulfillment === 'delivery' ? 'levering' : 'afhentning';
-  let confirmText = 'Ordre modtaget! Vi kontakter dig for at bekraefte detaljer om ' + fulfillmentDa + ' ' + dayLabel(o).toLowerCase() + ' kl. ' + o.time + '. Tak fordi du valgte Runtz Farm!';
-  if (o.payment === 'revolut' && REVOLUT_LINK) {
-    confirmText += '\n\nBetal her: ' + REVOLUT_LINK;
-  }
-
-           await ctx.editMessageText(confirmText);
-  ctx.session = { cart: [], stage: null, order: {} };
+Send '+CRYPTO_TYPE+' til: '+CRYPTO_WALLET_ADDRESS+'
+Total: '+total+' kr.';
+  await ctx.editMessageText(msg);
+  ctx.session={cart:[],stage:null,order:{}};
 });
 
-bot.action(/^claim:(.+)$/, async (ctx) => {
-  const orderId = ctx.match[1];
-  const order = orderStore[orderId];
-  if (!order) {
-    return ctx.answerCbQuery('Ordren blev ikke fundet (botten er muligvis genstartet).');
-  }
-  if (order.claimedBy) {
-    return ctx.answerCbQuery('Allerede taget af ' + order.claimedBy);
-  }
-  const staffer = ctx.from.first_name || ctx.from.username || 'Ukendt';
-  order.claimedBy = staffer;
-  const newText = order.text + '\n\n🚗 Taget af: ' + staffer;
-  const newKeyboard = Markup.inlineKeyboard([
-    [Markup.button.callback('✅ Leveret / Afhentet', 'complete:' + orderId)],
-    ]);
-  for (const ref of order.refs) {
-    try {
-      await ctx.telegram.editMessageText(ref.chatId, ref.messageId, undefined, newText, newKeyboard);
-    } catch (err) {
-      console.error('Failed to update ref:', err.message);
-    }
-  }
+bot.action(/^claim:(.+)$/, async ctx => {
+  const orderId=ctx.match[1]; const order=orderStore[orderId];
+  if(!order) return ctx.answerCbQuery('Ikke fundet.');
+  if(order.claimedBy) return ctx.answerCbQuery('Taget af '+order.claimedBy);
+  const staffer=ctx.from.first_name||ctx.from.username||'Ukendt'; order.claimedBy=staffer;
+  const newText=order.text+'
+
+Taget af: '+staffer;
+  for(const ref of order.refs) { try { await ctx.telegram.editMessageText(ref.chatId,ref.messageId,undefined,newText,Markup.inlineKeyboard([[Markup.button.callback('Leveret/Afhentet','complete:'+orderId)]])); } catch(err){} }
   ctx.answerCbQuery('Du har taget ordren!');
 });
 
-bot.action(/^complete:(.+)$/, async (ctx) => {
-  const orderId = ctx.match[1];
-  const order = orderStore[orderId];
-  if (!order) {
-    return ctx.answerCbQuery('Ordren blev ikke fundet (botten er muligvis genstartet).');
-  }
-  if (order.completed) {
-    return ctx.answerCbQuery('Allerede markeret som fuldfort.');
-  }
-  const staffer = ctx.from.first_name || ctx.from.username || 'Ukendt';
-  order.completed = true;
-  const base = order.claimedBy ? (order.text + '\n\n🚗 Taget af: ' + order.claimedBy) : order.text;
-  const newText = base + '\n\n✅ Fuldfort af: ' + staffer;
-  for (const ref of order.refs) {
-    try {
-      await ctx.telegram.editMessageText(ref.chatId, ref.messageId, undefined, newText);
-    } catch (err) {
-      console.error('Failed to update ref:', err.message);
-    }
-  }
-  ctx.answerCbQuery('Ordre markeret som fuldfort!');
-  delete orderStore[orderId];
+bot.action(/^complete:(.+)$/, async ctx => {
+  const orderId=ctx.match[1]; const order=orderStore[orderId];
+  if(!order) return ctx.answerCbQuery('Ikke fundet.');
+  if(order.completed) return ctx.answerCbQuery('Allerede fuldfort.');
+  const staffer=ctx.from.first_name||ctx.from.username||'Ukendt'; order.completed=true;
+  const base=order.claimedBy?(order.text+'
+
+Taget af: '+order.claimedBy):order.text;
+  for(const ref of order.refs) { try { await ctx.telegram.editMessageText(ref.chatId,ref.messageId,undefined,base+'
+
+Fuldfort af: '+staffer); } catch(err){} }
+  ctx.answerCbQuery('Fuldfort!'); delete orderStore[orderId];
 });
 
 bot.launch();
 console.log('Runtz Farm bot is running...');
-
-const app = express();
-app.get('/', (req, res) => res.send('Runtz Farm bot is alive.'));
-app.listen(process.env.PORT || 3000, () => {
-  console.log('Healthcheck server listening.');
-});
-
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
-
-const https = require('https');
-const SELF_URL = process.env.RENDER_EXTERNAL_URL || 'https://runtz-farm-bot.onrender.com';
-setInterval(() => {
-  https.get(SELF_URL, (res) => {
-    res.resume();
-  }).on('error', () => {});
-}, 10 * 60 * 1000);
+const app=express(); app.get('/',(req,res)=>res.send('alive')); app.listen(process.env.PORT||3000);
+process.once('SIGINT',()=>bot.stop('SIGINT')); process.once('SIGTERM',()=>bot.stop('SIGTERM'));
+const https=require('https'); const SELF_URL=process.env.RENDER_EXTERNAL_URL||'https://runtz-farm-bot.onrender.com';
+setInterval(()=>{https.get(SELF_URL,r=>{r.resume();}).on('error',()=>{});},10*60*1000);
