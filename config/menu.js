@@ -78,4 +78,7 @@ module.exports = {
       name: "THC Creme 🧴 — KOMMER SNART", 
       price: 0, 
       unit: "glas", 
-      description: "Beroligende creme til huden. Kommer
+      description: "Beroligende creme til huden. Kommer snart — hold øjnene åbne!" 
+    },
+  ],
+};
