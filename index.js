@@ -2,7 +2,7 @@ require('dotenv').config();
 const { Telegraf, Markup, session } = require('telegraf');
 const express = require('express');
 const { MongoClient } = require('mongodb');
-const menu = require('./config/menu');
+const menu = require('./config/menu'); 
 const payment = require('./lib/paymentHandler');
 
 // EXPRESS KEEP-ALIVE SERVER (Render)
