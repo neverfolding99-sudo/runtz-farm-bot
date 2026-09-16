@@ -8,6 +8,28 @@ module.exports = {
 
   "⚡ Static": [
     { name: "Exotic Static ⚡", price: 800, unit: "10 gram", description: "Eksotisk sort med unik, krystalliseret struktur og kraftig effekt." },
+    { name: "Piatella ⚡", price: 850, unit: "12 gram", description: "Blid og aromatisk, perfekt til afslapning. Eksklusiv kvalitet." },
+    { name: "Plasma Static ⚡", price: 700, unit: "13 gram", description: "Kraftfuld sort med intens smag og effekt." }
+  ],
+
+  "🍬 Edibles": [
+    { name: "Bolsjer 10-pak 🍬 — KOMMER SNART", price: 0, unit: "pakke", description: "10 stk frugtsmagende slik. Kommer snart — hold øjnene åbne!" },
+    { name: "Chokoladebar 🍫 — KOMMER SNART", price: 0, unit: "bar", description: "Lækker chokoladebar. Kommer snart — hold øjnene åbne!" }
+  ],
+
+  "💧 THC Olie": [
+    { name: "THC Olie 1000mg 💧 — KOMMER SNART", price: 0, unit: "flaske", description: "Højkoncentreret THC-olie. Kommer snart — hold øjnene åbne!" }
+  ],
+};// TOPSHELF FARM - MENU
+
+module.exports = {
+  "🌿 Weed": [
+    { name: "La Runtz Cali 🌿", price: 700, unit: "10 gram", description: "Sød og frugtig med et afslappende high. Top shelf kvalitet." },
+    { name: "Gelato Cali 🌿", price: 800, unit: "12 gram", description: "Cremet og sød smag med et velafbalanceret high. Premium sort." }
+  ],
+
+  "⚡ Static": [
+    { name: "Exotic Static ⚡", price: 800, unit: "10 gram", description: "Eksotisk sort med unik, krystalliseret struktur og kraftig effekt." },
     { name: "Piatella ⚡", price: 850, unit: "10 gram", description: "Blid og aromatisk, perfekt til afslapning. Eksklusiv kvalitet." },
     { name: "Plasma Static ⚡", price: 700, unit: "10 gram", description: "Kraftfuld sort med intens smag og effekt." }
   ],
