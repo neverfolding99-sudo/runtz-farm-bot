@@ -139,13 +139,52 @@ bot.action('PICKUP', (ctx) => { ctx.session.order.delivery = 'pickup'; ctx.sessi
 
 bot.on('text', async (ctx) => {
   if (!ctx.session) return;
-  if (ctx.session.step === 'name') { ctx.session.order.name = ctx.message.text; ctx.session.step = 'phone'; return ctx.reply('Skriv telefonnummer:'); }
+  if (ctx.session.step === 'name') {
+    ctx.session.order.name = ctx.message.text;
+    ctx.session.step = 'phone';
+    return ctx.reply('Skriv telefonnummer:');
+  }
   if (ctx.session.step === 'phone') {
     ctx.session.order.phone = ctx.message.text;
-    if (ctx.session.order.delivery === 'delivery') { ctx.session.step = 'address'; return ctx.reply('Skriv leveringsadresse:'); }
-    ctx.session.step = 'payment'; return ctx.reply('Vaelg betaling:', paymentButtons());
+    ctx.session.step = 'telegram';
+    const tgUser = ctx.from.username ? '@' + ctx.from.username : null;
+    if (tgUser) {
+      return ctx.reply(
+        'Skriv dit Telegram brugernavn (eller tryk for at bruge dit eget):',
+        Markup.inlineKeyboard([[Markup.button.callback('Brug ' + tgUser, 'USE_TG_' + ctx.from.username)]])
+      );
+    }
+    return ctx.reply('Skriv dit Telegram brugernavn (f.eks. @ditNavn), eller skriv ingen:');
   }
-  if (ctx.session.step === 'address') { ctx.session.order.address = ctx.message.text; ctx.session.step = 'payment'; return ctx.reply('Vaelg betaling:', paymentButtons()); }
+  if (ctx.session.step === 'telegram') {
+    let tg = ctx.message.text.trim();
+    if (tg.toLowerCase() === 'ingen' || tg === '-') tg = 'Ikke opgivet';
+    else if (tg && !tg.startsWith('@')) tg = '@' + tg;
+    ctx.session.order.telegram = tg;
+    if (ctx.session.order.delivery === 'delivery') {
+      ctx.session.step = 'address';
+      return ctx.reply('Skriv leveringsadresse:');
+    }
+    ctx.session.step = 'payment';
+    return ctx.reply('Vaelg betaling:', paymentButtons());
+  }
+  if (ctx.session.step === 'address') {
+    ctx.session.order.address = ctx.message.text;
+    ctx.session.step = 'payment';
+    return ctx.reply('Vaelg betaling:', paymentButtons());
+  }
+});
+
+bot.action(/USE_TG_(.+)/, (ctx) => {
+  const username = '@' + ctx.match[1];
+  ctx.session.order.telegram = username;
+  if (ctx.session.order.delivery === 'delivery') {
+    ctx.session.step = 'address';
+    return ctx.reply('Telegram: ' + username + nl + 'Skriv leveringsadresse:');
+  }
+  ctx.session.step = 'payment';
+  ctx.reply('Telegram: ' + username);
+  return ctx.reply('Vaelg betaling:', paymentButtons());
 });
 
 function paymentButtons() {
@@ -161,11 +200,38 @@ bot.action(/PAY_(.+)/, (ctx) => {
 });
 
 bot.action('FINAL_CONFIRM', async (ctx) => {
-  const order = { id: Math.floor(Math.random()*90000)+10000, items: ctx.session.cart, total: ctx.session.cart.reduce((s,i)=>s+i.price,0), delivery: ctx.session.order.delivery, name: ctx.session.order.name, phone: ctx.session.order.phone, address: ctx.session.order.address || 'Afhentning', payment: ctx.session.order.payment, createdAt: new Date() };
+  const telegram = ctx.session.order.telegram || (ctx.from.username ? '@' + ctx.from.username : 'Ikke opgivet');
+  const order = {
+    id: Math.floor(Math.random()*90000)+10000,
+    items: ctx.session.cart,
+    total: ctx.session.cart.reduce((s,i)=>s+i.price,0),
+    delivery: ctx.session.order.delivery,
+    name: ctx.session.order.name,
+    phone: ctx.session.order.phone,
+    telegram: telegram,
+    address: ctx.session.order.address || 'Afhentning',
+    payment: ctx.session.order.payment,
+    createdAt: new Date()
+  };
   await ordersCollection.insertOne(order);
-  const msg = ['Ny ordre','','ID: '+order.id,'Navn: '+order.name,'Telefon: '+order.phone,'Adresse: '+order.address,'Levering: '+order.delivery,'Betaling: '+order.payment,'','Produkter:',...order.items.map(i=>'- '+i.name+' ('+i.price+' kr)'),'','Total: '+order.total+' kr'].join(nl);
+  const msg = [
+    'Ny ordre', '',
+    'ID: ' + order.id,
+    'Navn: ' + order.name,
+    'Telefon: ' + order.phone,
+    'Telegram: ' + order.telegram,
+    'Adresse: ' + order.address,
+    'Levering: ' + order.delivery,
+    'Betaling: ' + order.payment,
+    '',
+    'Produkter:',
+    ...order.items.map(i => '- ' + i.name + ' (' + i.price + ' kr)'),
+    '',
+    'Total: ' + order.total + ' kr'
+  ].join(nl);
   bot.telegram.sendMessage(process.env.OWNER_CHAT_ID, msg);
   if (process.env.ADMIN_GROUP_ID) bot.telegram.sendMessage(process.env.ADMIN_GROUP_ID, msg);
+  if (process.env.GROUP_CHAT_ID) bot.telegram.sendMessage(process.env.GROUP_CHAT_ID, msg);
   if (process.env.DRIVER_GROUP_ID) bot.telegram.sendMessage(process.env.DRIVER_GROUP_ID, msg);
   ctx.reply('Ordre bekraeftet! ID: ' + order.id + '. Vi kontakter dig snarest.');
   reset(ctx);
