@@ -7,23 +7,19 @@ const https = require('https');
 const menu = require('./config/menu');
 const payment = require('./lib/paymentHandler');
 
-// EXPRESS
 const app = express();
 app.get('/', (req, res) => res.send('TopShelfFarm Bot is running'));
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log('Express server on port ' + PORT));
 
-// Self-ping every 10 min
 const SELF_URL = process.env.RENDER_EXTERNAL_URL || 'https://runtz-farm-bot.onrender.com';
 setInterval(() => {
   https.get(SELF_URL, (res) => { console.log('Self-ping:', res.statusCode); }).on('error', (e) => { console.error('Self-ping error:', e.message); });
 }, 10 * 60 * 1000);
 
-// BOT
 const bot = new Telegraf(process.env.BOT_TOKEN);
 bot.use(session({ defaultSession: () => ({ cart: [], step: null, order: {} }) }));
 
-// MONGODB
 const client = new MongoClient(process.env.MONGODB_URI);
 let ordersCollection;
 let approvedCollection;
@@ -49,11 +45,21 @@ async function isApproved(userId) {
   catch (e) { return false; }
 }
 
-// GLOBAL ERROR HANDLER
-bot.catch((err, ctx) => { console.error('Bot error for update', ctx && ctx.updateType, ':', err.message); });
-process.on('unhandledRejection', (reason) => { console.error('Unhandled rejection:', reason && reason.message); });
+bot.catch((err, ctx) => { console.error('Bot error:', err.message); });
 
-// APPROVAL GATE
+function launchBot() {
+  bot.launch({ dropPendingUpdates: true }).then(() => {
+    console.log('Bot polling started');
+  }).catch((err) => {
+    console.error('Bot launch error:', err.message);
+    setTimeout(launchBot, 10000);
+  });
+}
+
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled rejection:', reason && reason.message);
+});
+
 bot.use(async (ctx, next) => {
   const userId = ctx.from && ctx.from.id;
   if (!userId) return next();
@@ -66,7 +72,6 @@ bot.use(async (ctx, next) => {
   return ctx.reply('Din adgang afventer godkendelse. Vent venligst.');
 });
 
-// START
 bot.start(async (ctx) => {
   const userId = ctx.from.id;
   const ownerId = String(process.env.OWNER_CHAT_ID);
@@ -84,7 +89,6 @@ bot.start(async (ctx) => {
   } catch(e) { console.error('notify owner failed:', e.message); }
 });
 
-// APPROVE / DENY
 bot.action(/APPROVE_(\d+)/, async (ctx) => {
   const userId = String(ctx.match[1]);
   await approvedCollection.updateOne({ userId }, { $set: { userId, approvedAt: new Date() } }, { upsert: true });
@@ -98,7 +102,6 @@ bot.action(/DENY_(\d+)/, async (ctx) => {
   try { await bot.telegram.sendMessage(userId, 'Din adgang er afvist.'); } catch(e) {}
 });
 
-// MENU
 bot.hears('Menu', (ctx) => {
   ctx.reply('Vaelg kategori:', Markup.inlineKeyboard(Object.keys(menu).map((cat) => [Markup.button.callback(cat, 'CAT_' + cat)])));
 });
@@ -115,7 +118,6 @@ bot.action(/ITEM_(.+)_(\d+)/, (ctx) => {
   ctx.reply('Tilfojet: ' + item.name + ' - ' + item.price + ' kr', Markup.keyboard([['Menu'], ['Kurv', 'Annuller']]).resize());
 });
 
-// CART
 bot.hears('Kurv', (ctx) => {
   if (!ctx.session.cart || !ctx.session.cart.length) return ctx.reply('Kurven er tom.');
   const total = ctx.session.cart.reduce((s, i) => s + i.price, 0);
@@ -127,7 +129,6 @@ bot.hears('Kurv', (ctx) => {
 
 bot.action('CLEAR_CART', (ctx) => { ctx.session.cart = []; ctx.reply('Kurven er ryddet.'); });
 
-// CHECKOUT
 bot.action('STEP_DELIVERY', (ctx) => {
   ctx.session.step = 'delivery_choice';
   ctx.reply('Levering eller afhentning?', Markup.inlineKeyboard([[Markup.button.callback('Levering', 'DELIVERY')],[Markup.button.callback('Afhentning', 'PICKUP')]]));
@@ -159,7 +160,6 @@ bot.action(/PAY_(.+)/, (ctx) => {
   ctx.reply('Bekraeft ordren:', Markup.inlineKeyboard([[Markup.button.callback('Bekraeft', 'FINAL_CONFIRM')],[Markup.button.callback('Annuller', 'CANCEL_ORDER')]]));
 });
 
-// FINAL CONFIRM
 bot.action('FINAL_CONFIRM', async (ctx) => {
   const order = { id: Math.floor(Math.random()*90000)+10000, items: ctx.session.cart, total: ctx.session.cart.reduce((s,i)=>s+i.price,0), delivery: ctx.session.order.delivery, name: ctx.session.order.name, phone: ctx.session.order.phone, address: ctx.session.order.address || 'Afhentning', payment: ctx.session.order.payment, createdAt: new Date() };
   await ordersCollection.insertOne(order);
@@ -174,7 +174,7 @@ bot.action('FINAL_CONFIRM', async (ctx) => {
 bot.action('CANCEL_ORDER', (ctx) => { reset(ctx); ctx.reply('Annulleret.'); });
 bot.hears('Annuller', (ctx) => { reset(ctx); ctx.reply('Annulleret.'); });
 
-bot.launch();
+launchBot();
 console.log('TopShelfFarm bot is running...');
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
