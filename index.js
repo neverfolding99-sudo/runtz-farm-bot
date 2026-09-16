@@ -1,4 +1,5 @@
 require('dotenv').config();
+const nl = '\n';
 const { Telegraf, Markup, session } = require('telegraf');
 const express = require('express');
 const { MongoClient } = require('mongodb');
@@ -6,27 +7,23 @@ const https = require('https');
 const menu = require('./config/menu');
 const payment = require('./lib/paymentHandler');
 
-// ── EXPRESS KEEP-ALIVE ────────────────────────────────────────────────────────
+// EXPRESS
 const app = express();
 app.get('/', (req, res) => res.send('TopShelfFarm Bot is running'));
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log('Express server on port ' + PORT));
 
-// Self-ping every 10 min so Render free tier stays awake
+// Self-ping every 10 min
 const SELF_URL = process.env.RENDER_EXTERNAL_URL || 'https://runtz-farm-bot.onrender.com';
 setInterval(() => {
-  https.get(SELF_URL, (res) => {
-    console.log('Self-ping OK:', res.statusCode);
-  }).on('error', (e) => {
-    console.error('Self-ping failed:', e.message);
-  });
+  https.get(SELF_URL, (res) => { console.log('Self-ping:', res.statusCode); }).on('error', (e) => { console.error('Self-ping error:', e.message); });
 }, 10 * 60 * 1000);
 
-// ── BOT ──────────────────────────────────────────────────────────────────────
+// BOT
 const bot = new Telegraf(process.env.BOT_TOKEN);
 bot.use(session({ defaultSession: () => ({ cart: [], step: null, order: {} }) }));
 
-// ── MONGODB ───────────────────────────────────────────────────────────────────
+// MONGODB
 const client = new MongoClient(process.env.MONGODB_URI);
 let ordersCollection;
 let approvedCollection;
@@ -40,30 +37,23 @@ async function connectDB() {
     console.log('Connected to MongoDB');
   } catch (err) {
     console.error('MongoDB error:', err);
-    setTimeout(connectDB, 5000); // retry after 5s
+    setTimeout(connectDB, 5000);
   }
 }
 connectDB();
 
-// ── HELPERS ───────────────────────────────────────────────────────────────────
 function reset(ctx) { ctx.session = { cart: [], step: null, order: {} }; }
 
 async function isApproved(userId) {
-  try {
-    return !!(await approvedCollection.findOne({ userId: String(userId) }));
-  } catch (e) { return false; }
+  try { return !!(await approvedCollection.findOne({ userId: String(userId) })); }
+  catch (e) { return false; }
 }
 
-// ── GLOBAL ERROR HANDLER (prevents bot crashes) ───────────────────────────────
-bot.catch((err, ctx) => {
-  console.error('Bot error for update', ctx && ctx.updateType, ':', err.message);
-});
+// GLOBAL ERROR HANDLER
+bot.catch((err, ctx) => { console.error('Bot error for update', ctx && ctx.updateType, ':', err.message); });
+process.on('unhandledRejection', (reason) => { console.error('Unhandled rejection:', reason && reason.message); });
 
-process.on('unhandledRejection', (reason) => {
-  console.error('Unhandled rejection:', reason);
-});
-
-// ── APPROVAL GATE MIDDLEWARE ──────────────────────────────────────────────────
+// APPROVAL GATE
 bot.use(async (ctx, next) => {
   const userId = ctx.from && ctx.from.id;
   if (!userId) return next();
@@ -76,14 +66,13 @@ bot.use(async (ctx, next) => {
   return ctx.reply('Din adgang afventer godkendelse. Vent venligst.');
 });
 
-// ── START ─────────────────────────────────────────────────────────────────────
+// START
 bot.start(async (ctx) => {
   const userId = ctx.from.id;
   const ownerId = String(process.env.OWNER_CHAT_ID);
   if (String(userId) === ownerId || await isApproved(userId)) {
     reset(ctx);
-    return ctx.reply('Velkommen til TopShelfFarm. Tryk Menu.',
-      Markup.keyboard([['Menu'], ['Kurv', 'Annuller']]).resize());
+    return ctx.reply('Velkommen til TopShelfFarm. Tryk Menu.', Markup.keyboard([['Menu'], ['Kurv', 'Annuller']]).resize());
   }
   const username = ctx.from.username ? '@' + ctx.from.username : ctx.from.first_name;
   await ctx.reply('Din adgang afventer godkendelse. Ejeren er notificeret.');
@@ -95,7 +84,7 @@ bot.start(async (ctx) => {
   } catch(e) { console.error('notify owner failed:', e.message); }
 });
 
-// ── APPROVE / DENY ────────────────────────────────────────────────────────────
+// APPROVE / DENY
 bot.action(/APPROVE_(\d+)/, async (ctx) => {
   const userId = String(ctx.match[1]);
   await approvedCollection.updateOne({ userId }, { $set: { userId, approvedAt: new Date() } }, { upsert: true });
@@ -109,7 +98,7 @@ bot.action(/DENY_(\d+)/, async (ctx) => {
   try { await bot.telegram.sendMessage(userId, 'Din adgang er afvist.'); } catch(e) {}
 });
 
-// ── MENU ──────────────────────────────────────────────────────────────────────
+// MENU
 bot.hears('Menu', (ctx) => {
   ctx.reply('Vaelg kategori:', Markup.inlineKeyboard(Object.keys(menu).map((cat) => [Markup.button.callback(cat, 'CAT_' + cat)])));
 });
@@ -126,7 +115,7 @@ bot.action(/ITEM_(.+)_(\d+)/, (ctx) => {
   ctx.reply('Tilfojet: ' + item.name + ' - ' + item.price + ' kr', Markup.keyboard([['Menu'], ['Kurv', 'Annuller']]).resize());
 });
 
-// ── CART ──────────────────────────────────────────────────────────────────────
+// CART
 bot.hears('Kurv', (ctx) => {
   if (!ctx.session.cart || !ctx.session.cart.length) return ctx.reply('Kurven er tom.');
   const total = ctx.session.cart.reduce((s, i) => s + i.price, 0);
@@ -138,7 +127,7 @@ bot.hears('Kurv', (ctx) => {
 
 bot.action('CLEAR_CART', (ctx) => { ctx.session.cart = []; ctx.reply('Kurven er ryddet.'); });
 
-// ── CHECKOUT FLOW ─────────────────────────────────────────────────────────────
+// CHECKOUT
 bot.action('STEP_DELIVERY', (ctx) => {
   ctx.session.step = 'delivery_choice';
   ctx.reply('Levering eller afhentning?', Markup.inlineKeyboard([[Markup.button.callback('Levering', 'DELIVERY')],[Markup.button.callback('Afhentning', 'PICKUP')]]));
@@ -170,19 +159,9 @@ bot.action(/PAY_(.+)/, (ctx) => {
   ctx.reply('Bekraeft ordren:', Markup.inlineKeyboard([[Markup.button.callback('Bekraeft', 'FINAL_CONFIRM')],[Markup.button.callback('Annuller', 'CANCEL_ORDER')]]));
 });
 
-// ── FINAL CONFIRM ─────────────────────────────────────────────────────────────
+// FINAL CONFIRM
 bot.action('FINAL_CONFIRM', async (ctx) => {
-  const order = {
-    id: Math.floor(Math.random()*90000)+10000,
-    items: ctx.session.cart,
-    total: ctx.session.cart.reduce((s,i)=>s+i.price,0),
-    delivery: ctx.session.order.delivery,
-    name: ctx.session.order.name,
-    phone: ctx.session.order.phone,
-    address: ctx.session.order.address || 'Afhentning',
-    payment: ctx.session.order.payment,
-    createdAt: new Date()
-  };
+  const order = { id: Math.floor(Math.random()*90000)+10000, items: ctx.session.cart, total: ctx.session.cart.reduce((s,i)=>s+i.price,0), delivery: ctx.session.order.delivery, name: ctx.session.order.name, phone: ctx.session.order.phone, address: ctx.session.order.address || 'Afhentning', payment: ctx.session.order.payment, createdAt: new Date() };
   await ordersCollection.insertOne(order);
   const msg = ['Ny ordre','','ID: '+order.id,'Navn: '+order.name,'Telefon: '+order.phone,'Adresse: '+order.address,'Levering: '+order.delivery,'Betaling: '+order.payment,'','Produkter:',...order.items.map(i=>'- '+i.name+' ('+i.price+' kr)'),'','Total: '+order.total+' kr'].join(nl);
   bot.telegram.sendMessage(process.env.OWNER_CHAT_ID, msg);
@@ -195,7 +174,6 @@ bot.action('FINAL_CONFIRM', async (ctx) => {
 bot.action('CANCEL_ORDER', (ctx) => { reset(ctx); ctx.reply('Annulleret.'); });
 bot.hears('Annuller', (ctx) => { reset(ctx); ctx.reply('Annulleret.'); });
 
-// ── LAUNCH ────────────────────────────────────────────────────────────────────
 bot.launch();
 console.log('TopShelfFarm bot is running...');
 
